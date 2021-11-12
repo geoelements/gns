@@ -1,6 +1,4 @@
 from typing import List
-
-import torch
 import torch.nn as nn
 
 
@@ -8,8 +6,8 @@ def build_mlp(
         input_size: int,
         hidden_layer_sizes: List[int],
         output_size: int = None,
-        output_activation: torch.nn.Module = torch.nn.Identity,
-        activation: torch.nn.Module = torch.nn.ReLU) -> torch.nn.Module:
+        output_activation: nn.Module = nn.Identity,
+        activation: nn.Module = nn.ReLU) -> nn.Module:
     """Build a MultiLayer Perceptron.
 
     Args:
@@ -20,7 +18,7 @@ def build_mlp(
       activation: Activation function for the hidden layers.
 
     Returns:
-      torch.nn.Sequential: A sequantial container.
+      mlp: An MLP sequential container.
     """
     # Size of each layer
     layer_sizes = [input_size] + hidden_layer_sizes
@@ -32,11 +30,13 @@ def build_mlp(
 
     # Create a list of activation functions and
     # set the last element to output activation function
-    acts = [activation for i in range(nlayers)]
-    acts[-1] = output_activation
+    act = [activation for i in range(nlayers)]
+    act[-1] = output_activation
 
     # Create a torch sequential container
-    layers = [[torch.nn.Linear(layer_sizes[i],
-                               layer_sizes[i + 1]), acts[i]()]
-              for i in range(nlayers)]
-    return torch.nn.Sequential(*layers)
+    mlp = nn.Sequential()
+    for i in range(nlayers):
+        mlp.add_module("NN-" + str(i), nn.Linear(layer_sizes[i],
+                                                 layer_sizes[i + 1]))
+        mlp.add_module("Act-" + str(i), act[i]())
+    return mlp
