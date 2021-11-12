@@ -36,8 +36,7 @@ def build_mlp(
     acts[-1] = output_activation
 
     # Create a torch sequential container
-    layers = []
-    for i in range(nlayers):
-        layers.append([torch.nn.Linear(layer_sizes[i],
-                                       layer_sizes[i + 1]), acts[i]()])
+    layers = [[torch.nn.Linear(layer_sizes[i],
+                               layer_sizes[i + 1]), acts[i]()]
+              for i in range(nlayers)]
     return torch.nn.Sequential(*layers)
