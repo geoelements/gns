@@ -176,6 +176,7 @@ class InteractionNetwork(MessagePassing):
         Returns:
           tuple: Updated node and edge features
         """
+        # Concat node features with a final shape of [nparticles, latent_dim (or nnode_in) *2]
         x_updated = torch.cat([x_updated, x], dim=-1)
         x_updated = self.node_fn(x_updated)
         return x_updated, e_features
