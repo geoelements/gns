@@ -276,3 +276,66 @@ class Decoder(nn.Module):
           x: Particle state representation as a torch tensor with shape (nparticles, nnode_in)
         """
         return self.node_fn(x)
+
+
+class EncodeProcessDecode(nn.Module):
+    def __init__(
+        self,
+        nnode_in_features: int,
+        nnode_out_features: int,
+        nedge_in_features: int,
+        latent_dim: int,
+        nmessage_passing_steps: int,
+        nmlp_layers: int,
+        mlp_hidden_dim: int,
+    ):
+        """Encode-Process-Decode function approximator for learnable simulator.
+        Args:
+          nnode_in_features: Number of node input features (for 2D = 30, calculated as [10 = 5 times steps * 2 positions (x, y) + 4 distances to boundaries (top/bottom/left/right) + 16 particle type embeddings]).
+          nnode_out_features:  Number of node outputs (particle dimension).
+          nedge_in_features: Number of edge input features (for 2D = 3, calculated as [2 (x, y) relative displacements between 2 particles + distance between 2 particles]).
+          latent_dim: Size of latent dimension (128)
+          nmlp_layer: Number of hidden layers in the MLP (typically of size 2).
+          mlp_hidden_dim: Size of the hidden layer (latent dimension of size 128).
+        """
+        super(EncodeProcessDecode, self).__init__()
+        self._encoder = Encoder(
+            nnode_in_features=nnode_in_features,
+            nnode_out_features=latent_dim,
+            nedge_in_features=nedge_in_features,
+            nedge_out_features=latent_dim,
+            nmlp_layers=nmlp_layers,
+            mlp_hidden_dim=mlp_hidden_dim,
+        )
+        self._processor = Processor(
+            nnode_in=latent_dim,
+            nnode_out=latent_dim,
+            nedge_in=latent_dim,
+            nedge_out=latent_dim,
+            nmessage_passing_steps=nmessage_passing_steps,
+            nmlp_layers=nmlp_layers,
+            mlp_hidden_dim=mlp_hidden_dim,
+        )
+        self._decoder = Decoder(
+            nnode_in=latent_dim,
+            nnode_out=nnode_out_features,
+            nmlp_layers=nmlp_layers,
+            mlp_hidden_dim=mlp_hidden_dim,
+        )
+
+    def forward(self,
+                x: torch.tensor,
+                edge_index: torch.tensor,
+                edge_features: torch.tensor):
+        """The forward hook runs when the EncodeProcessorDecode class is instantiated.
+
+          Args:
+            x: Particle state representation as a torch tensor with shape (nparticles, nnode_in_features)
+            edge_index: A torch tensor list of source and target nodes with shape (2, nedges)
+            edge_features: Edge features as a torch tensor with shape (nedges, nedge_in_features)
+
+        """
+        x, edge_features = self._encoder(x, edge_features)
+        x, edge_features = self._processor(x, edge_index, edge_features)
+        x = self._decoder(x)
+        return x
