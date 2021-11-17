@@ -147,7 +147,7 @@ class InteractionNetwork(MessagePassing):
     def message(self,
                 x_i: torch.tensor,
                 x_j: torch.tensor,
-                e_features: torch.tensor) -> torch.tensor:
+                edge_features: torch.tensor) -> torch.tensor:
         """Constructs message from j to i of edge $e_{i, j}$. Tensors :obj:`x` passed to :meth:`propagate` can be mapped to the
         respective nodes :math:`i` and :math:`j` by appending :obj:`_i` or :obj:`_j` to the variable name, i.e., :obj:`x_i` and :obj:`x_j`.
 
@@ -158,14 +158,14 @@ class InteractionNetwork(MessagePassing):
 
         """
         # Concat edge features with a final shape of [nedges, latent_dim*3]
-        e_features = torch.cat([x_i, x_j, e_features], dim=-1)
-        e_features = self.edge_fn(e_features)
-        return e_features
+        edge_features = torch.cat([x_i, x_j, edge_features], dim=-1)
+        edge_features = self.edge_fn(edge_features)
+        return edge_features
 
     def update(self,
                x_updated: torch.tensor,
                x: torch.tensor,
-               e_features: torch.tensor):
+               edge_features: torch.tensor):
         """Update the particle state representation
 
         Args:
@@ -179,7 +179,7 @@ class InteractionNetwork(MessagePassing):
         # Concat node features with a final shape of [nparticles, latent_dim (or nnode_in) *2]
         x_updated = torch.cat([x_updated, x], dim=-1)
         x_updated = self.node_fn(x_updated)
-        return x_updated, e_features
+        return x_updated, edge_features
 
 
 class Decoder(nn.Module):
