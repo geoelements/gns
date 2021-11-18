@@ -1,26 +1,26 @@
 import torch.nn as nn
 from gns import graph_network
+from typing import List, Dict
 
 
 class LearnedSimulator(nn.Module):
   """Learned simulator from https://arxiv.org/pdf/2002.09405.pdf."""
 
   def __init__(
-      self,
-      particle_dimensions: int,
-      nnode_in: int,
-      nedge_in: int,
-      latent_dim: int,
-      nmessage_passing_steps: int,
-      nmlp_layers: int,
-      mlp_hidden_dim: int,
-      connectivity_radius,
-      boundaries,
-      normalization_stats,
-      nparticle_types: int,
-      particle_type_embedding_size,
-      device="cpu",
-  ):
+          self,
+          particle_dimensions: int,
+          nnode_in: int,
+          nedge_in: int,
+          latent_dim: int,
+          nmessage_passing_steps: int,
+          nmlp_layers: int,
+          mlp_hidden_dim: int,
+          connectivity_radius: float,
+          boundaries: List,
+          normalization_stats: Dict,
+          nparticle_types: int,
+          particle_type_embedding_size,
+          device="cpu"):
     """Initializes the model.
 
       Args:
@@ -49,8 +49,7 @@ class LearnedSimulator(nn.Module):
 
     # Particle type embedding has shape (9, 16)
     self._particle_type_embedding = nn.Embedding(
-        nparticle_types, particle_type_embedding_size
-    )
+        nparticle_types, particle_type_embedding_size)
 
     # Initialize the EncodeProcessDecode
     self._encode_process_decode = graph_network.EncodeProcessDecode(
@@ -60,7 +59,6 @@ class LearnedSimulator(nn.Module):
         latent_dim=latent_dim,
         nmessage_passing_steps=nmessage_passing_steps,
         nmlp_layers=nmlp_layers,
-        mlp_hidden_dim=mlp_hidden_dim,
-    )
+        mlp_hidden_dim=mlp_hidden_dim)
 
     self._device = device
