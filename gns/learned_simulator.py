@@ -29,7 +29,7 @@ class LearnedSimulator(nn.Module):
             nedge_in: Number of edge inputs.
             latent_dim: Size of latent dimension (128)
             nmessage_passing_steps: Number of message passing steps.
-            nmlp_layer: Number of hidden layers in the MLP (typically of size 2).
+            nmlp_layers: Number of hidden layers in the MLP (typically of size 2).
             connectivity_radius: Scalar with the radius of connectivity.
             boundaries: List of 2-tuples, containing the lower and upper boundaries of
                 the cuboid containing the particles along each dimensions, matching
@@ -51,12 +51,12 @@ class LearnedSimulator(nn.Module):
         self._particle_type_embedding = nn.Embedding(
             nparticle_types, particle_type_embedding_size
         )
-
+        
         # Initialize the EncodeProcessDecode
         self._encode_process_decode = graph_network.EncodeProcessDecode(
-            nnode_in=nnode_in,
-            nnode_out=particle_dimensions,
-            nedge_in=nedge_in,
+            nnode_in_features=nnode_in,
+            nnode_out_features=particle_dimensions,
+            nedge_in_features=nedge_in,
             latent_dim=latent_dim,
             nmessage_passing_steps=nmessage_passing_steps,
             nmlp_layers=nmlp_layers,
