@@ -87,12 +87,29 @@ class LearnedSimulator(nn.Module):
       add_self_edges: Boolean flag to include self edge (default: True)
     """
     # Specify examples id for particles
-    batch_ids = torch.cat([torch.LongTensor([i for _ in range(n)])
-                          for i, n in enumerate(nparticles_per_example)]).to(self._device)
+    batch_ids = torch.cat(
+        [torch.LongTensor([i for _ in range(n)])
+         for i, n in enumerate(nparticles_per_example)]).to(self._device)
+
     # radius_graph accepts r < radius not r <= radius
     # A torch tensor list of source and target nodes with shape (2, nedges)
     edge_index = radius_graph(
         node_features, r=radius, batch=batch_ids, loop=add_self_edges)
+
     receivers = edge_index[0, :]
     senders = edge_index[1, :]
+
     return receivers, senders
+
+
+def time_diff(
+        position_sequence: torch.tensor) -> torch.tensor:
+  """Finite difference between two input position sequence
+
+  Args:
+    position_sequence: Input position sequence & shape(nparticles, 6 steps, dim)
+
+  Returns:
+    torch.tensor: Velocity sequence
+  """
+  return position_sequence[:, 1:] - position_sequence[:, :-1]
