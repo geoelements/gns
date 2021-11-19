@@ -1,14 +1,21 @@
 import collections
 import functools
+import numpy as np
 import os
+import torch
+
 import tensorflow.compat.v1 as tf
 import tensorflow_datasets as tfds
-import reading_utils
 import tree
 
-from absl import app
 from absl import flags
 from absl import logging
+from absl import app
+
+
+from gns import learned_simulator
+from gns import noise_utils
+from gns import reading_utils
 
 flags.DEFINE_enum(
     'mode', 'train', ['train', 'eval', 'eval_rollout'],
@@ -17,15 +24,26 @@ flags.DEFINE_enum('eval_split', 'test', ['train', 'valid', 'test'],
                   help='Split to use when running evaluation.')
 flags.DEFINE_string('data_path', None, help='The dataset directory.')
 flags.DEFINE_integer('batch_size', 2, help='The batch size.')
-flags.DEFINE_integer('num_steps', int(
-    2e7), help='Number of steps of training.')
+
 flags.DEFINE_float('noise_std', 6.7e-4, help='The std deviation of the noise.')
-flags.DEFINE_string('model_path', None,
+flags.DEFINE_string('model_path', 'models/',
                     help=('The path for saving checkpoints of the model. '
                           'Defaults to a temporary directory.'))
 flags.DEFINE_string('output_path', None,
                     help='The path for saving outputs (e.g. rollouts).')
 
+flags.DEFINE_string('device', 'cpu', help='Device to train `cpu` or `gpu`.')
+
+flags.DEFINE_integer('ntraining_steps', int(2e7),
+                     help='Number of training steps.')
+flags.DEFINE_integer('neval_steps', int(20), help='Number of eval steps.')
+flags.DEFINE_integer('nsave_steps', int(100), help='Frequency to save states.')
+
+# Learning rate parameters
+flags.DEFINE_float('lr_init', 1e-4, help='Initial learning rate.')
+flags.DEFINE_float('lr_decay', 0.1, help='Learning rate decay.')
+flags.DEFINE_integer('lr_decay_steps', int(
+    5e6), help='Learning rate decay steps.')
 
 FLAGS = flags.FLAGS
 
@@ -34,6 +52,13 @@ Stats = collections.namedtuple('Stats', ['mean', 'std'])
 INPUT_SEQUENCE_LENGTH = 6  # So we can calculate the last 5 velocities.
 NUM_PARTICLE_TYPES = 9
 KINEMATIC_PARTICLE_ID = 3
+
+# TODO: Remove temporary vars
+DEVICE = 'cpu'
+NOISE_STD = 6.7e-4
+NEVAL_STEPS = int(20)
+NSAVE_STEPS = int(100)
+NTRAINING_STEPS = int(2e7)
 
 
 def prepare_inputs(tensor_dict):
@@ -70,9 +95,9 @@ def prepare_inputs(tensor_dict):
   tensor_dict['position'] = pos[:, :-1]
 
   # Compute the number of particles per example.
-  num_particles = tf.shape(pos)[0]
+  nparticles = tf.shape(pos)[0]
   # Add an extra dimension for stacking via concat.
-  tensor_dict['n_particles_per_example'] = num_particles[tf.newaxis]
+  tensor_dict['n_particles_per_example'] = nparticles[tf.newaxis]
 
   if 'step_context' in tensor_dict:
     # Take the input global context. We have a stack of global contexts,
@@ -86,8 +111,8 @@ def prepare_inputs(tensor_dict):
 def prepare_rollout_inputs(context, features):
   """Prepares an inputs trajectory for rollout."""
   out_dict = {**context}
-  # Position is encoded as [sequence_length, num_particles, dim] but the model
-  # expects [num_particles, sequence_length, dim].
+  # Position is encoded as [sequence_length, nparticles, dim] but the model
+  # expects [nparticles, sequence_length, dim].
   pos = tf.transpose(features['position'], [1, 0, 2])
   # The target position is the final step of the stack of positions.
   target_position = pos[:, -1]
@@ -166,3 +191,124 @@ def prepare_input_data(
   ds = tfds.as_numpy(ds)
 
   return ds
+
+
+def train(simulator):
+  i = 0
+  MODEL_PATH = './models/'  # FLAGS.model_path
+
+  device = FLAGS.device
+
+  # Learning rate parameters
+  lr_new = FLAGS.lr_init
+  optimizer = torch.optim.Adam(simulator.parameters(), lr=FLAGS.lr_init)
+
+  ds = prepare_input_data(FLAGS.data_path,
+                          batch_size=FLAGS.batch_size)
+
+  step = 0
+  try:
+    for features, labels in ds:
+      features['position'] = torch.tensor(
+          features['position']).to(device)
+      features['n_particles_per_example'] = torch.tensor(
+          features['n_particles_per_example']).to(device)
+      features['particle_type'] = torch.tensor(
+          features['particle_type']).to(device)
+      labels = torch.tensor(labels).to(device)
+
+      # Sample the noise to add to the inputs to the model during training.
+      sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(
+          features['position'], noise_std_last_step=NOISE_STD).to(device)
+      non_kinematic_mask = (
+          features['particle_type'] != 3).clone().detach().to(device)
+      sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
+
+      # Get the predictions and target accelerations.
+      pred_acc, target_acc = simulator.predict_accelerations(
+          next_positions=labels,
+          position_sequence_noise=sampled_noise,
+          position_sequence=features['position'],
+          nparticles_per_example=features['n_particles_per_example'],
+          particle_types=features['particle_type'],
+      )
+
+      # Calculate the loss and mask out loss on kinematic particles
+      loss = (pred_acc - target_acc) ** 2
+      loss = loss.sum(dim=-1)
+      num_non_kinematic = non_kinematic_mask.sum()
+      loss = torch.where(non_kinematic_mask.bool(),
+                         loss, torch.zeros_like(loss))
+      loss = loss.sum() / num_non_kinematic
+
+      # Computes the gradient of loss
+      optimizer.zero_grad()
+      loss.backward()
+      optimizer.step()
+
+      # Update learning rate
+      lr_new = FLAGS.lr_init * (FLAGS.lr_decay ** (step/FLAGS.lr_decay_steps))
+      for param in optimizer.param_groups:
+        param['lr'] = lr_new
+
+      step += 1
+      print('Training step: {}/{}. Loss: {}.'.format(step,
+                                                     FLAGS.ntraining_steps,
+                                                     loss))
+
+      # Complete training
+      if (step > NTRAINING_STEPS):
+        break
+
+      # Save model state
+      if step % NSAVE_STEPS == 0:
+        simulator.save(MODEL_PATH + 'model.pt')
+
+  except KeyboardInterrupt:
+    pass
+
+  simulator.save(MODEL_PATH + 'finalmodel.pt')
+
+
+def main(_):
+  """Train or evaluates the model."""
+  # Read metadata
+  metadata = reading_utils.read_metadata(FLAGS.data_path)
+
+  # Set device ('cpu' or 'gpu')
+  device = FLAGS.device
+
+  # Normalization stats
+  normalization_stats = {
+      'acceleration': {
+          'mean': torch.FloatTensor(metadata['acc_mean']).to(device),
+          'std': torch.sqrt(torch.FloatTensor(metadata['acc_std'])**2 +
+                            NOISE_STD**2).to(device),
+      },
+      'velocity': {
+          'mean': torch.FloatTensor(metadata['vel_mean']).to(device),
+          'std': torch.sqrt(torch.FloatTensor(metadata['vel_std'])**2 +
+                            NOISE_STD**2).to(device),
+      },
+  }
+
+  simulator = learned_simulator.LearnedSimulator(
+      particle_dimensions=2,
+      nnode_in=30,
+      nedge_in=3,
+      latent_dim=128,
+      nmessage_passing_steps=10,
+      nmlp_layers=2,
+      mlp_hidden_dim=128,
+      connectivity_radius=metadata['default_connectivity_radius'],
+      boundaries=np.array(metadata['bounds']),
+      normalization_stats=normalization_stats,
+      nparticle_types=9,
+      particle_type_embedding_size=16,
+      device=device)
+
+  train(simulator)
+
+
+if __name__ == '__main__':
+  app.run(main)
