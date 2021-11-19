@@ -108,12 +108,12 @@ class LearnedSimulator(nn.Module):
           position_sequence: torch.tensor,
           nparticles_per_example: torch.tensor,
           particle_types: torch.tensor):
-    """Extracts important features from the position sequence. Returns a tuple 
-    of node_features (nparticles, 30), edge_index (nparticles, nparticles), and 
+    """Extracts important features from the position sequence. Returns a tuple
+    of node_features (nparticles, 30), edge_index (nparticles, nparticles), and
     edge_features (nparticles, 3).
 
     Args:
-      position_sequence: A sequence of particle positions. Shape is 
+      position_sequence: A sequence of particle positions. Shape is
         (nparticles, 6, dim). Includes current + last 5 positions
       nparticles_per_example: Number of particles per example. Default is 2
         examples per batch.
@@ -195,7 +195,7 @@ class LearnedSimulator(nn.Module):
           self,
           normalized_acceleration: torch.tensor,
           position_sequence: torch.tensor) -> torch.tensor:
-    """ Compute new position based on acceleration and current position. 
+    """ Compute new position based on acceleration and current position.
     The model produces the output in normalized space so we apply inverse
     normalization.
 
@@ -257,18 +257,18 @@ class LearnedSimulator(nn.Module):
     """Produces normalized and predicted acceleration targets.
 
     Args:
-      next_positions: Tensor of shape (nparticles_in_batch, dim) with the 
+      next_positions: Tensor of shape (nparticles_in_batch, dim) with the
         positions the model should output given the inputs.
       position_sequence_noise: Tensor of the same shape as `position_sequence`
         with the noise to apply to each particle.
-      position_sequence: A sequence of particle positions. Shape is 
+      position_sequence: A sequence of particle positions. Shape is
         (nparticles, 6, dim). Includes current + last 5 positions.
       nparticles_per_example: Number of particles per example. Default is 2
         examples per batch.
       particle_types: Particle types with shape (nparticles).
 
     Returns:
-      Tensors of shape (nparticles_in_batch, dim) with the predicted and target 
+      Tensors of shape (nparticles_in_batch, dim) with the predicted and target
         normalized accelerations.
 
     """
@@ -305,9 +305,9 @@ class LearnedSimulator(nn.Module):
     """Inverse of `_decoder_postprocessor`.
 
     Args:
-      next_position: Tensor of shape (nparticles_in_batch, dim) with the 
+      next_position: Tensor of shape (nparticles_in_batch, dim) with the
         positions the model should output given the inputs.
-      position_sequence: A sequence of particle positions. Shape is 
+      position_sequence: A sequence of particle positions. Shape is
         (nparticles, 6, dim). Includes current + last 5 positions.
 
     Returns:
@@ -323,6 +323,26 @@ class LearnedSimulator(nn.Module):
     normalized_acceleration = (
         acceleration - acceleration_stats['mean']) / acceleration_stats['std']
     return normalized_acceleration
+
+  def save(
+          self,
+          path: str = 'model.pt'):
+    """Save model state
+
+    Args:
+      path: Model path
+    """
+    torch.save(self.state_dict(), path)
+
+  def load(
+          self,
+          path: str):
+    """Load model state from file
+
+    Args:
+      path: Model path
+    """
+    self.load_state_dict(torch.load(path))
 
 
 def time_diff(
