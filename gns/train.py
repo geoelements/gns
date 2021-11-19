@@ -54,11 +54,6 @@ INPUT_SEQUENCE_LENGTH = 6  # So we can calculate the last 5 velocities.
 NUM_PARTICLE_TYPES = 9
 KINEMATIC_PARTICLE_ID = 3
 
-# TODO: Remove temporary vars
-NEVAL_STEPS = int(20)
-NSAVE_STEPS = int(100)
-NTRAINING_STEPS = int(2e7)
-
 
 def prepare_inputs(tensor_dict):
   """Prepares a single stack of inputs by calculating inputs and targets.
@@ -193,8 +188,11 @@ def prepare_input_data(
 
 
 def train(simulator):
-  i = 0
-  MODEL_PATH = './models/'  # FLAGS.model_path
+
+  # Model path
+  model_path = FLAGS.model_path
+  if not os.path.exists(FLAGS.model_path):
+    os.mkdir(FLAGS.model_path)
 
   device = FLAGS.device
 
@@ -253,26 +251,25 @@ def train(simulator):
       print('Training step: {}/{}. Loss: {}.'.format(step,
                                                      FLAGS.ntraining_steps,
                                                      loss))
+      # Save model state
+      if step % FLAGS.nsave_steps == 0:
+        simulator.save(model_path + 'model.pt')
 
       # Complete training
-      if (step > NTRAINING_STEPS):
+      if (step > FLAGS.ntraining_steps):
         break
-
-      # Save model state
-      if step % NSAVE_STEPS == 0:
-        simulator.save(MODEL_PATH + 'model.pt')
 
   except KeyboardInterrupt:
     pass
 
-  simulator.save(MODEL_PATH + 'finalmodel.pt')
+  simulator.save(model_path + 'finalmodel.pt')
 
 
 def _get_simulator(
         metadata: json,
         acc_noise_std: float,
         vel_noise_std: float,
-        device: str = 'cpu') -> learned_simulator.LearnedSimulator:
+        device: str) -> learned_simulator.LearnedSimulator:
   """Instantiates the simulator.
 
   Args:
