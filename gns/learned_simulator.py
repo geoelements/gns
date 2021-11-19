@@ -117,7 +117,7 @@ class LearnedSimulator(nn.Module):
         (nparticles, 6, dim). Includes current + last 5 positions
       nparticles_per_example: Number of particles per example. Default is 2
         examples per batch.
-      particle_types: Particle types with shape (nparticles)
+      particle_types: Particle types with shape (nparticles).
     """
     nparticles = position_sequence.shape[0]
     most_recent_position = position_sequence[:, -1]  # (n_nodes, 2)
@@ -234,7 +234,7 @@ class LearnedSimulator(nn.Module):
       current_positions: Current particle positions (nparticles, dim).
       nparticles_per_example: Number of particles per example. Default is 2
         examples per batch.
-      particle_types: Particle types with shape (nparticles)
+      particle_types: Particle types with shape (nparticles).
 
     Returns:
       next_positions (torch.tensor): Next position of particles.
@@ -257,12 +257,15 @@ class LearnedSimulator(nn.Module):
     """Produces normalized and predicted acceleration targets.
 
     Args:
-      next_positions: Tensor of shape (num_particles_in_batch, num_dimensions)
-        with the positions the model should output given the inputs.
+      next_positions: Tensor of shape (nparticles_in_batch, dim) with the 
+        positions the model should output given the inputs.
       position_sequence_noise: Tensor of the same shape as `position_sequence`
         with the noise to apply to each particle.
-      position_sequence, n_node, global_context, particle_types: Inputs to the
-        model as defined by `_build`.
+      position_sequence: A sequence of particle positions. Shape is 
+        (nparticles, 6, dim). Includes current + last 5 positions.
+      nparticles_per_example: Number of particles per example. Default is 2
+        examples per batch.
+      particle_types: Particle types with shape (nparticles).
 
     Returns:
       Tensors of shape (nparticles_in_batch, dim) with the predicted and target 
@@ -294,6 +297,32 @@ class LearnedSimulator(nn.Module):
     #   matches the ground truth next velocity (noise cancels out).
 
     return predicted_normalized_acceleration, target_normalized_acceleration
+
+  def _inverse_decoder_postprocessor(
+          self,
+          next_position: torch.tensor,
+          position_sequence: torch.tensor):
+    """Inverse of `_decoder_postprocessor`.
+
+    Args:
+      next_position: Tensor of shape (nparticles_in_batch, dim) with the 
+        positions the model should output given the inputs.
+      position_sequence: A sequence of particle positions. Shape is 
+        (nparticles, 6, dim). Includes current + last 5 positions.
+
+    Returns:
+      normalized_acceleration (torch.tensor): Normalized acceleration.
+
+    """
+    previous_position = position_sequence[:, -1]
+    previous_velocity = previous_position - position_sequence[:, -2]
+    next_velocity = next_position - previous_position
+    acceleration = next_velocity - previous_velocity
+
+    acceleration_stats = self._normalization_stats["acceleration"]
+    normalized_acceleration = (
+        acceleration - acceleration_stats['mean']) / acceleration_stats['std']
+    return normalized_acceleration
 
 
 def time_diff(
