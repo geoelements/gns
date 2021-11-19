@@ -218,9 +218,82 @@ class LearnedSimulator(nn.Module):
     most_recent_position = position_sequence[:, -1]
     most_recent_velocity = most_recent_position - position_sequence[:, -2]
 
+    # TODO: Fix dt
     new_velocity = most_recent_velocity + acceleration  # * dt = 1
     new_position = most_recent_position + new_velocity  # * dt = 1
     return new_position
+
+  def predict_positions(
+          self,
+          current_positions: torch.tensor,
+          nparticles_per_example: torch.tensor,
+          particle_types: torch.tensor) -> torch.tensor:
+    """Predict position based on acceleration.
+
+    Args:
+      current_positions: Current particle positions (nparticles, dim).
+      nparticles_per_example: Number of particles per example. Default is 2
+        examples per batch.
+      particle_types: Particle types with shape (nparticles)
+
+    Returns:
+      next_positions (torch.tensor): Next position of particles.
+    """
+    node_features, edge_index, edge_features = self._encoder_preprocessor(
+        current_positions, nparticles_per_example, particle_types)
+    predicted_normalized_acceleration = self._encode_process_decode(
+        node_features, edge_index, edge_features)
+    next_positions = self._decoder_postprocessor(
+        predicted_normalized_acceleration, current_positions)
+    return next_positions
+
+  def predict_accelerations(
+          self,
+          next_positions: torch.tensor,
+          position_sequence_noise: torch.tensor,
+          position_sequence: torch.tensor,
+          nparticles_per_example: torch.tensor,
+          particle_types: torch.tensor):
+    """Produces normalized and predicted acceleration targets.
+
+    Args:
+      next_positions: Tensor of shape (num_particles_in_batch, num_dimensions)
+        with the positions the model should output given the inputs.
+      position_sequence_noise: Tensor of the same shape as `position_sequence`
+        with the noise to apply to each particle.
+      position_sequence, n_node, global_context, particle_types: Inputs to the
+        model as defined by `_build`.
+
+    Returns:
+      Tensors of shape (nparticles_in_batch, dim) with the predicted and target 
+        normalized accelerations.
+
+    """
+
+    # Add noise to the input position sequence.
+    noisy_position_sequence = position_sequence + position_sequence_noise
+
+    # Perform the forward pass with the noisy position sequence.
+    node_features, edge_index, edge_features = self._encoder_preprocessor(
+        noisy_position_sequence, nparticles_per_example, particle_types)
+    predicted_normalized_acceleration = self._encode_process_decode(
+        node_features, edge_index, edge_features)
+
+    # Calculate the target acceleration, using an `adjusted_next_position `that
+    # is shifted by the noise in the last input position.
+    next_position_adjusted = next_positions + position_sequence_noise[:, -1]
+    target_normalized_acceleration = self._inverse_decoder_postprocessor(
+        next_position_adjusted, noisy_position_sequence)
+    # As a result the inverted Euler update in the `_inverse_decoder` produces:
+    # * A target acceleration that does not explicitly correct for the noise in
+    #   the input positions, as the `next_position_adjusted` is different
+    #   from the true `next_position`.
+    # * A target acceleration that exactly corrects noise in the input velocity
+    #   since the target next velocity calculated by the inverse Euler update
+    #   as `next_position_adjusted - noisy_position_sequence[:,-1]`
+    #   matches the ground truth next velocity (noise cancels out).
+
+    return predicted_normalized_acceleration, target_normalized_acceleration
 
 
 def time_diff(
