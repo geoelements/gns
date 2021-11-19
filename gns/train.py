@@ -1,5 +1,6 @@
 import collections
 import functools
+import json
 import numpy as np
 import os
 import torch
@@ -32,7 +33,7 @@ flags.DEFINE_string('model_path', 'models/',
 flags.DEFINE_string('output_path', None,
                     help='The path for saving outputs (e.g. rollouts).')
 
-flags.DEFINE_string('device', 'cpu', help='Device to train `cpu` or `gpu`.')
+flags.DEFINE_string('device', 'cpu', help='Device to train `cpu` or `cuda`.')
 
 flags.DEFINE_integer('ntraining_steps', int(2e7),
                      help='Number of training steps.')
@@ -54,8 +55,6 @@ NUM_PARTICLE_TYPES = 9
 KINEMATIC_PARTICLE_ID = 3
 
 # TODO: Remove temporary vars
-DEVICE = 'cpu'
-NOISE_STD = 6.7e-4
 NEVAL_STEPS = int(20)
 NSAVE_STEPS = int(100)
 NTRAINING_STEPS = int(2e7)
@@ -219,7 +218,7 @@ def train(simulator):
 
       # Sample the noise to add to the inputs to the model during training.
       sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(
-          features['position'], noise_std_last_step=NOISE_STD).to(device)
+          features['position'], noise_std_last_step=FLAGS.noise_std).to(device)
       non_kinematic_mask = (
           features['particle_type'] != 3).clone().detach().to(device)
       sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
@@ -230,8 +229,7 @@ def train(simulator):
           position_sequence_noise=sampled_noise,
           position_sequence=features['position'],
           nparticles_per_example=features['n_particles_per_example'],
-          particle_types=features['particle_type'],
-      )
+          particle_types=features['particle_type'])
 
       # Calculate the loss and mask out loss on kinematic particles
       loss = (pred_acc - target_acc) ** 2
@@ -270,30 +268,36 @@ def train(simulator):
   simulator.save(MODEL_PATH + 'finalmodel.pt')
 
 
-def main(_):
-  """Train or evaluates the model."""
-  # Read metadata
-  metadata = reading_utils.read_metadata(FLAGS.data_path)
+def _get_simulator(
+        metadata: json,
+        acc_noise_std: float,
+        vel_noise_std: float,
+        device: str = 'cpu') -> learned_simulator.LearnedSimulator:
+  """Instantiates the simulator.
 
-  # Set device ('cpu' or 'gpu')
-  device = FLAGS.device
+  Args:
+    metadata: JSON object with metadata.
+    acc_noise_std: Acceleration noise std deviation.
+    vel_noise_std: Velocity noise std deviation.
+    device: 'cpu' or 'cuda'.
+  """
 
   # Normalization stats
   normalization_stats = {
       'acceleration': {
           'mean': torch.FloatTensor(metadata['acc_mean']).to(device),
           'std': torch.sqrt(torch.FloatTensor(metadata['acc_std'])**2 +
-                            NOISE_STD**2).to(device),
+                            acc_noise_std**2).to(device),
       },
       'velocity': {
           'mean': torch.FloatTensor(metadata['vel_mean']).to(device),
           'std': torch.sqrt(torch.FloatTensor(metadata['vel_std'])**2 +
-                            NOISE_STD**2).to(device),
+                            vel_noise_std**2).to(device),
       },
   }
 
   simulator = learned_simulator.LearnedSimulator(
-      particle_dimensions=2,
+      particle_dimensions=metadata['dim'],
       nnode_in=30,
       nedge_in=3,
       latent_dim=128,
@@ -303,10 +307,19 @@ def main(_):
       connectivity_radius=metadata['default_connectivity_radius'],
       boundaries=np.array(metadata['bounds']),
       normalization_stats=normalization_stats,
-      nparticle_types=9,
+      nparticle_types=NUM_PARTICLE_TYPES,
       particle_type_embedding_size=16,
       device=device)
 
+  return simulator
+
+
+def main(_):
+  """Train or evaluates the model."""
+  # Read metadata
+  metadata = reading_utils.read_metadata(FLAGS.data_path)
+  simulator = _get_simulator(metadata, FLAGS.noise_std,
+                             FLAGS.noise_std, FLAGS.device)
   train(simulator)
 
 
