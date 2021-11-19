@@ -77,13 +77,13 @@ class LearnedSimulator(nn.Module):
           nparticles_per_example: torch.tensor,
           radius: float,
           add_self_edges: bool = True):
-    """Generate graph edges to all points within a threshold radius
+    """Generate graph edges to all particles within a threshold radius
 
     Args:
       node_features: Node features with shape (nparticles, dim).
       nparticles_per_example: Number of particles per example. Default is 2
         examples per batch.
-      radius: Threshold to construct edges to all points within the radius.
+      radius: Threshold to construct edges to all particles within the radius.
       add_self_edges: Boolean flag to include self edge (default: True)
     """
     # Specify examples id for particles
@@ -190,6 +190,37 @@ class LearnedSimulator(nn.Module):
     return (torch.cat(node_features, dim=-1),
             torch.stack([senders, receivers]),
             torch.cat(edge_features, dim=-1))
+
+  def _decoder_postprocessor(
+          self,
+          normalized_acceleration: torch.tensor,
+          position_sequence: torch.tensor) -> torch.tensor:
+    """ Compute new position based on acceleration and current position. 
+    The model produces the output in normalized space so we apply inverse
+    normalization.
+
+    Args:
+      normalized_acceleration: Normalized acceleration (nparticles, dim).
+      position_sequence: Position sequence of shape (nparticles, dim).
+
+    Returns:
+      torch.tensor: New position of the particles.
+
+    """
+    # Extract real acceleration values from normalized values
+    acceleration_stats = self._normalization_stats["acceleration"]
+    acceleration = (
+        normalized_acceleration * acceleration_stats['std']
+    ) + acceleration_stats['mean']
+
+    # Use an Euler integrator to go from acceleration to position, assuming
+    # a dt=1 corresponding to the size of the finite difference.
+    most_recent_position = position_sequence[:, -1]
+    most_recent_velocity = most_recent_position - position_sequence[:, -2]
+
+    new_velocity = most_recent_velocity + acceleration  # * dt = 1
+    new_position = most_recent_position + new_velocity  # * dt = 1
+    return new_position
 
 
 def time_diff(
