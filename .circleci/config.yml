@@ -1,0 +1,32 @@
+version: 2.1
+
+workflows:
+  build:
+    jobs:
+      - test-39:
+          context:
+            - docker
+
+jobs:
+  test-39: &test-template
+    docker:
+      - image: circleci/python:3.9.6
+    working_directory: ~/repo
+    steps:
+      - checkout
+      - run:
+          name: Create virtualenv
+          command: |
+            virtualenv venv
+            . venv/bin/activate
+      - run:
+          name: Install gns dependencies
+          command: |
+            . venv/bin/activate
+            pip install -r requirements.txt
+      - run:
+          name: Run tests
+          command: |
+            . venv/bin/activate
+            cd test
+            python -m unittest discover test/
