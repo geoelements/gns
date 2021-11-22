@@ -1,7 +1,3 @@
-absl-py
-autopep8
-tensorflow>=1.15,<2
-tensorflow-datasets
 numpy
-dm-tree
 matplotlib
+pytorch
