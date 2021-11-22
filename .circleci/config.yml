@@ -3,7 +3,7 @@ version: 2.1
 workflows:
   build:
     jobs:
-      - test-39:
+      - test-39
 
 jobs:
   test-39: &test-template
