@@ -4,8 +4,6 @@ workflows:
   build:
     jobs:
       - test-39:
-          context:
-            - docker
 
 jobs:
   test-39: &test-template
