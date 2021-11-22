@@ -187,6 +187,63 @@ def prepare_input_data(
   return ds
 
 
+def rollout(
+        simulator: learned_simulator.LearnedSimulator,
+        features: torch.tensor,
+        nsteps: int,
+        device: str):
+  """Rolls out a trajectory by applying the model in sequence.
+
+  Args:
+    simulator: Learned simulator.
+    features: Torch tensor features.
+    nsteps: Number of steps.
+    device: cpu or cuda device.
+  """
+  initial_positions = features['position'][:, 0:INPUT_SEQUENCE_LENGTH]
+  ground_truth_positions = features['position'][:, INPUT_SEQUENCE_LENGTH:]
+
+  current_positions = initial_positions
+  predictions = []
+
+  for step in range(nsteps):
+    # Get next position with shape (nnodes, dim)
+    next_position = simulator.predict_positions(
+        current_positions,
+        n_particles_per_example=features['n_particles_per_example'],
+        particle_types=features['particle_type'],
+    )
+
+    # Update kinematic particles from prescribed trajectory.
+    kinematic_mask = (features['particle_type'] ==
+                      3).clone().detach().to(device)
+    next_position_ground_truth = ground_truth_positions[:, step]
+    kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, 2)
+    next_position = torch.where(
+        kinematic_mask, next_position_ground_truth, next_position)
+    predictions.append(next_position)
+
+    # Shift `current_positions`, removing the oldest position in the sequence
+    # and appending the next position at the end.
+    current_positions = torch.cat(
+        [current_positions[:, 1:], next_position[:, None, :]], dim=1)
+
+  # Predictions with shape (time, nnodes, dim)
+  predictions = torch.stack(predictions)
+  ground_truth_positions = ground_truth_positions.permute(1, 0, 2)
+
+  loss = (predictions - ground_truth_positions) ** 2
+
+  output_dict = {
+      'initial_positions': initial_positions.permute(1, 0, 2).cpu().numpy(),
+      'predicted_rollout': predictions.cpu().numpy(),
+      'ground_truth_rollout': ground_truth_positions.cpu().numpy(),
+      'particle_types': features['particle_type'].cpu().numpy(),
+  }
+
+  return output_dict, loss
+
+
 def train(simulator):
 
   # Model path
