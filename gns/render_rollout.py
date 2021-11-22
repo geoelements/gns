@@ -18,7 +18,7 @@
 
 Usage (from parent directory):
 
-`python -m learning_to_simulate.render_rollout --rollout_path={OUTPUT_PATH}/rollout_test_1.pkl`
+`python -m gns.render_rollout --rollout_path={OUTPUT_PATH}/rollout_test_1.pkl`
 
 Where {OUTPUT_PATH} is the output path passed to `train.py` in "eval_rollout"
 mode.
@@ -62,7 +62,7 @@ def main(unused_argv):
 
   plot_info = []
   for ax_i, (label, rollout_field) in enumerate(
-      [("MPM", "ground_truth_rollout"),
+      [("Reality", "ground_truth_rollout"),
        ("GNS", "predicted_rollout")]):
     # Append the initial positions to get the full trajectory.
     trajectory = np.concatenate([
@@ -96,8 +96,8 @@ def main(unused_argv):
   unused_animation = animation.FuncAnimation(
       fig, update,
       frames=np.arange(0, num_steps, FLAGS.step_stride), interval=10)
-  
-  unused_animation.save('rollout.gif', dpi=80, fps=30, writer='imagemagick')    
+
+  unused_animation.save('rollout.gif', dpi=80, fps=30, writer='imagemagick')
   plt.show(block=FLAGS.block_on_show)
 
 

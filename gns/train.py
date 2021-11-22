@@ -4,6 +4,7 @@ import json
 import numpy as np
 import os
 import torch
+import pickle
 
 import tensorflow.compat.v1 as tf
 import tensorflow_datasets as tfds
@@ -19,7 +20,7 @@ from gns import noise_utils
 from gns import reading_utils
 
 flags.DEFINE_enum(
-    'mode', 'train', ['train', 'eval', 'eval_rollout'],
+    'mode', 'train', ['train', 'rollout'],
     help='Train model, one step evaluation or rollout evaluation.')
 flags.DEFINE_enum('eval_split', 'test', ['train', 'valid', 'test'],
                   help='Split to use when running evaluation.')
@@ -30,7 +31,7 @@ flags.DEFINE_float('noise_std', 6.7e-4, help='The std deviation of the noise.')
 flags.DEFINE_string('model_path', 'models/',
                     help=('The path for saving checkpoints of the model. '
                           'Defaults to a temporary directory.'))
-flags.DEFINE_string('output_path', None,
+flags.DEFINE_string('output_path', 'rollouts/',
                     help='The path for saving outputs (e.g. rollouts).')
 
 flags.DEFINE_string('device', 'cpu', help='Device to train `cpu` or `cuda`.')
@@ -38,7 +39,7 @@ flags.DEFINE_string('device', 'cpu', help='Device to train `cpu` or `cuda`.')
 flags.DEFINE_integer('ntraining_steps', int(2e7),
                      help='Number of training steps.')
 flags.DEFINE_integer('neval_steps', int(20), help='Number of eval steps.')
-flags.DEFINE_integer('nsave_steps', int(100), help='Frequency to save states.')
+flags.DEFINE_integer('nsave_freq', int(5), help='Model save frequency (%).')
 
 # Learning rate parameters
 flags.DEFINE_float('lr_init', 1e-4, help='Initial learning rate.')
@@ -156,7 +157,7 @@ def prepare_input_data(
     data_path: the path to the dataset directory.
     batch_size: the number of graphs in a batch.
     mode: either 'train' or 'rollout'
-    split: either 'train', 'valid' or 'test.
+    split: either 'train', 'valid' or 'test'.
 
   Returns:
     The input data for the learning simulation model.
@@ -168,20 +169,24 @@ def prepare_input_data(
   ds = ds.map(functools.partial(
       reading_utils.parse_serialized_simulation_example, metadata=metadata))
 
-  # Splits an entire trajectory into chunks of 7 steps.
-  # Previous 5 velocities, current velocity and target.
-  split_with_window = functools.partial(
-      reading_utils.split_trajectory,
-      window_length=INPUT_SEQUENCE_LENGTH + 1)
-  ds = ds.flat_map(split_with_window)
-  # Splits a chunk into input steps and target steps
-  ds = ds.map(prepare_inputs)
-  # If in train mode, repeat dataset forever and shuffle.
-  if mode == 'train':
+  if mode == 'rollout':
+    ds = ds.map(prepare_rollout_inputs)
+  elif mode == 'train':
+    # Splits an entire trajectory into chunks of 7 steps.
+    # Previous 5 velocities, current velocity and target.
+    split_with_window = functools.partial(
+        reading_utils.split_trajectory,
+        window_length=INPUT_SEQUENCE_LENGTH + 1)
+    ds = ds.flat_map(split_with_window)
+    # Splits a chunk into input steps and target steps
+    ds = ds.map(prepare_inputs)
+    # If in train mode, repeat dataset forever and shuffle.
     ds = ds.repeat()
     ds = ds.shuffle(512)
-  # Custom batching on the leading axis.
-  ds = batch_concat(ds, batch_size)
+    # Custom batching on the leading axis.
+    ds = batch_concat(ds, batch_size)
+
+  # Convert to numpy
   ds = tfds.as_numpy(ds)
 
   return ds
@@ -190,16 +195,15 @@ def prepare_input_data(
 def rollout(
         simulator: learned_simulator.LearnedSimulator,
         features: torch.tensor,
-        nsteps: int,
-        device: str):
+        nsteps: int):
   """Rolls out a trajectory by applying the model in sequence.
 
   Args:
     simulator: Learned simulator.
     features: Torch tensor features.
     nsteps: Number of steps.
-    device: cpu or cuda device.
   """
+  device = FLAGS.device
   initial_positions = features['position'][:, 0:INPUT_SEQUENCE_LENGTH]
   ground_truth_positions = features['position'][:, INPUT_SEQUENCE_LENGTH:]
 
@@ -210,7 +214,7 @@ def rollout(
     # Get next position with shape (nnodes, dim)
     next_position = simulator.predict_positions(
         current_positions,
-        n_particles_per_example=features['n_particles_per_example'],
+        nparticles_per_example=features['n_particles_per_example'],
         particle_types=features['particle_type'],
     )
 
@@ -244,12 +248,70 @@ def rollout(
   return output_dict, loss
 
 
+def predict(
+        simulator: learned_simulator.LearnedSimulator,
+        metadata: json,
+        nsteps: int):
+  """Predict rollouts.
+
+  Args: 
+    simulator: Trained simulator if not will undergo training.
+    metadata: Metadata for test set.
+    nsteps: Predict nrollout steps. 
+  """
+
+  device = FLAGS.device
+
+  # Load simulator
+  if os.path.exists(FLAGS.model_path + 'model.pt'):
+    simulator.load(FLAGS.model_path + 'model.pt')
+  else:
+    train(simulator)
+
+  ds = prepare_input_data(FLAGS.data_path,
+                          batch_size=FLAGS.batch_size,
+                          mode='rollout', split='test')
+
+  eval_loss = []
+  with torch.no_grad():
+    for example_i, (features, labels) in enumerate(ds):
+      features['position'] = torch.tensor(
+          features['position']).to(device)
+      features['n_particles_per_example'] = torch.tensor(
+          features['n_particles_per_example']).to(device)
+      features['particle_type'] = torch.tensor(
+          features['particle_type']).to(device)
+
+      labels = torch.tensor(labels).to(device)
+
+      # Predict example rollout
+      example_rollout, loss = rollout(
+          simulator, features, nsteps)
+
+      example_rollout['metadata'] = metadata
+      print("Predicting example {} loss: {}".format(example_i, loss.mean()))
+      eval_loss.append(loss)
+
+      # Save file
+      example_rollout['metadata'] = metadata
+      filename = f'rollout_{example_i}.pkl'
+      filename = os.path.join(FLAGS.output_path, filename)
+      with open(filename, 'wb') as f:
+        pickle.dump(example_rollout, f)
+
+  print("Mean loss on rollout prediction: {}".format(
+      torch.stack(eval_loss).mean(0)))
+
+
 def train(simulator):
 
   # Model path
   model_path = FLAGS.model_path
-  if not os.path.exists(FLAGS.model_path):
-    os.mkdir(FLAGS.model_path)
+  if not os.path.exists(model_path):
+    os.mkdir(model_path)
+  else:
+    if os.path.exists(model_path + 'model.pt'):
+      simulator.load(model_path + 'model.pt')
 
   device = FLAGS.device
 
@@ -259,6 +321,10 @@ def train(simulator):
 
   ds = prepare_input_data(FLAGS.data_path,
                           batch_size=FLAGS.batch_size)
+
+  # Frequency to save 5%
+  nsave_steps = int(FLAGS.ntraining_steps/100 * FLAGS.nsave_freq)
+  nsave_steps = 1 if nsave_steps == 0 else nsave_steps
 
   step = 0
   try:
@@ -309,7 +375,7 @@ def train(simulator):
                                                      FLAGS.ntraining_steps,
                                                      loss))
       # Save model state
-      if step % FLAGS.nsave_steps == 0:
+      if step % nsave_steps == 0:
         simulator.save(model_path + 'model.pt')
 
       # Complete training
@@ -319,7 +385,7 @@ def train(simulator):
   except KeyboardInterrupt:
     pass
 
-  simulator.save(model_path + 'finalmodel.pt')
+  simulator.save(model_path + 'model.pt')
 
 
 def _get_simulator(
@@ -374,7 +440,10 @@ def main(_):
   metadata = reading_utils.read_metadata(FLAGS.data_path)
   simulator = _get_simulator(metadata, FLAGS.noise_std,
                              FLAGS.noise_std, FLAGS.device)
-  train(simulator)
+  if FLAGS.mode == 'train':
+    train(simulator)
+  elif FLAGS.mode == 'rollout':
+    predict(simulator, metadata, FLAGS.neval_steps)
 
 
 if __name__ == '__main__':

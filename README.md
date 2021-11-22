@@ -1,8 +1,20 @@
 # Graph Network Simulator
 
 ## Run GNS
+> Training
+
 ```shell
 python3 -m gns.train --device='cpu' --data_path='/tmp/datasets/WaterRamps/'
+```
+
+> Rollout
+```shell
+python3 -m gns.train --mode='rollout' --device='cpu' --data_path='../datasets/WaterDropSample/' --neval_steps=994 --model_path='./models/' --output_path='./rollouts'
+```
+
+> Render
+```shell
+ python3 -m gns.render_rollout --rollout_path='./rollouts/rollout_0.pkl' 
 ```
 
 ## Datasets
