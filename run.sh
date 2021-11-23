@@ -41,15 +41,15 @@ bash ./download_dataset.sh ${DATASET_NAME} "${TMP_DIR}/datasets"
 # Train for a few steps.
 DATA_PATH="${TMP_DIR}/datasets/${DATASET_NAME}"
 MODEL_PATH="${TMP_DIR}/models/${DATASET_NAME}"
-python -m gns.train --device='cpu' --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10 --mode='train'
+python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10 --mode='train'
 
 # Evaluate on validation split.
-python -m gns.train --device='cpu' --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --mode="eval" --eval_split="valid"
+python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --mode="eval" --eval_split="valid"
 
 # Generate test rollouts.
 ROLLOUT_PATH="${TMP_DIR}/rollouts/${DATASET_NAME}"
 mkdir -p ${ROLLOUT_PATH}
-python -m gns.train --device='cpu' --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --output_path=${ROLLOUT_PATH} --mode='rollout'
+python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --output_path=${ROLLOUT_PATH} --mode='rollout'
 
 # Plot the first rollout.
 python -m gns.render_rollout --rollout_path="${ROLLOUT_PATH}/rollout_test_0.pkl" --block_on_show=False

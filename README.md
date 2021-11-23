@@ -4,12 +4,12 @@
 > Training
 
 ```shell
-python3 -m gns.train --device='cpu' --data_path='../datasets/WaterDropSample/'
+python3 -m gns.train --data_path='../datasets/WaterDropSample/'
 ```
 
 > Rollout
 ```shell
-python3 -m gns.train --mode='rollout' --device='cpu' --data_path='../datasets/WaterDropSample/' --model_path='../models/WaterDropSample/' --output_path='../rollouts'
+python3 -m gns.train --mode='rollout' --data_path='../datasets/WaterDropSample/' --model_path='../models/WaterDropSample/' --output_path='../rollouts'
 ```
 
 > Render

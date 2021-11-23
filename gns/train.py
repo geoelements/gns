@@ -34,8 +34,6 @@ flags.DEFINE_string('model_path', 'models/',
 flags.DEFINE_string('output_path', 'rollouts/',
                     help='The path for saving outputs (e.g. rollouts).')
 
-flags.DEFINE_string('device', 'cpu', help='Device to train `cpu` or `cuda`.')
-
 flags.DEFINE_integer('ntraining_steps', int(2e7),
                      help='Number of training steps.')
 flags.DEFINE_integer('nsave_freq', int(5), help='Model save frequency (%).')
@@ -53,6 +51,8 @@ Stats = collections.namedtuple('Stats', ['mean', 'std'])
 INPUT_SEQUENCE_LENGTH = 6  # So we can calculate the last 5 velocities.
 NUM_PARTICLE_TYPES = 9
 KINEMATIC_PARTICLE_ID = 3
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def prepare_inputs(tensor_dict):
@@ -202,7 +202,6 @@ def rollout(
     features: Torch tensor features.
     nsteps: Number of steps.
   """
-  device = FLAGS.device
   initial_positions = features['position'][:, 0:INPUT_SEQUENCE_LENGTH]
   ground_truth_positions = features['position'][:, INPUT_SEQUENCE_LENGTH:]
 
@@ -259,8 +258,6 @@ def predict(
     nsteps: Predict nrollout steps. 
   """
 
-  device = FLAGS.device
-
   # Load simulator
   if os.path.exists(FLAGS.model_path + 'model.pt'):
     simulator.load(FLAGS.model_path + 'model.pt')
@@ -306,7 +303,13 @@ def predict(
       torch.stack(eval_loss).mean(0)))
 
 
-def train(simulator):
+def train(
+        simulator: learned_simulator.LearnedSimulator):
+  """Train the model.
+
+  Args:
+    simulator: Get LearnedSimulator.
+  """
 
   # Model path
   model_path = FLAGS.model_path
@@ -315,8 +318,6 @@ def train(simulator):
   else:
     if os.path.exists(model_path + 'model.pt'):
       simulator.load(model_path + 'model.pt')
-
-  device = FLAGS.device
 
   # Learning rate parameters
   lr_new = FLAGS.lr_init
@@ -394,15 +395,13 @@ def train(simulator):
 def _get_simulator(
         metadata: json,
         acc_noise_std: float,
-        vel_noise_std: float,
-        device: str) -> learned_simulator.LearnedSimulator:
+        vel_noise_std: float) -> learned_simulator.LearnedSimulator:
   """Instantiates the simulator.
 
   Args:
     metadata: JSON object with metadata.
     acc_noise_std: Acceleration noise std deviation.
     vel_noise_std: Velocity noise std deviation.
-    device: 'cpu' or 'cuda'.
   """
 
   # Normalization stats
@@ -441,8 +440,7 @@ def main(_):
   """Train or evaluates the model."""
   # Read metadata
   metadata = reading_utils.read_metadata(FLAGS.data_path)
-  simulator = _get_simulator(metadata, FLAGS.noise_std,
-                             FLAGS.noise_std, FLAGS.device)
+  simulator = _get_simulator(metadata, FLAGS.noise_std, FLAGS.noise_std)
   if FLAGS.mode == 'train':
     train(simulator)
   elif FLAGS.mode == 'rollout':
