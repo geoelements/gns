@@ -64,3 +64,12 @@ An additional smaller dataset `WaterDropSample`, which includes only the first t
     mkdir -p /tmp/datasets
     bash ./download_dataset.sh WaterRamps /tmp/datasets
 ```
+
+## Generate sphinx doc
+```shell
+    cd doc/
+    sphinx-apidoc -f -o ./ ../gns/
+    make html
+```    
+
+
