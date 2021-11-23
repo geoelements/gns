@@ -38,7 +38,6 @@ flags.DEFINE_string('device', 'cpu', help='Device to train `cpu` or `cuda`.')
 
 flags.DEFINE_integer('ntraining_steps', int(2e7),
                      help='Number of training steps.')
-flags.DEFINE_integer('neval_steps', int(20), help='Number of eval steps.')
 flags.DEFINE_integer('nsave_freq', int(5), help='Model save frequency (%).')
 
 # Learning rate parameters
@@ -268,6 +267,10 @@ def predict(
   else:
     train(simulator)
 
+  # Output path
+  if not os.path.exists(FLAGS.output_path):
+    os.mkdir(FLAGS.output_path)
+
   ds = prepare_input_data(FLAGS.data_path,
                           batch_size=FLAGS.batch_size,
                           mode='rollout', split='test')
@@ -281,9 +284,9 @@ def predict(
           features['n_particles_per_example']).to(device)
       features['particle_type'] = torch.tensor(
           features['particle_type']).to(device)
-
       labels = torch.tensor(labels).to(device)
 
+      nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
       # Predict example rollout
       example_rollout, loss = rollout(
           simulator, features, nsteps)
@@ -443,7 +446,7 @@ def main(_):
   if FLAGS.mode == 'train':
     train(simulator)
   elif FLAGS.mode == 'rollout':
-    predict(simulator, metadata, FLAGS.neval_steps)
+    predict(simulator, metadata)
 
 
 if __name__ == '__main__':
