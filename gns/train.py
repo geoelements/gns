@@ -266,7 +266,7 @@ def predict(
 
   # Output path
   if not os.path.exists(FLAGS.output_path):
-    os.mkdir(FLAGS.output_path)
+    os.makedirs(FLAGS.output_path)
 
   ds = prepare_input_data(FLAGS.data_path,
                           batch_size=FLAGS.batch_size,
@@ -314,7 +314,7 @@ def train(
   # Model path
   model_path = FLAGS.model_path
   if not os.path.exists(model_path):
-    os.mkdir(model_path)
+    os.makedirs(model_path)
   else:
     if os.path.exists(model_path + 'model.pt'):
       simulator.load(model_path + 'model.pt')
