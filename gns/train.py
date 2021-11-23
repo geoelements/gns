@@ -20,10 +20,8 @@ from gns import noise_utils
 from gns import reading_utils
 
 flags.DEFINE_enum(
-    'mode', 'train', ['train', 'rollout'],
-    help='Train model, one step evaluation or rollout evaluation.')
-flags.DEFINE_enum('eval_split', 'test', ['train', 'valid', 'test'],
-                  help='Split to use when running evaluation.')
+    'mode', 'train', ['train', 'valid', 'rollout'],
+    help='Train model, validation or rollout evaluation.')
 flags.DEFINE_string('data_path', None, help='The dataset directory.')
 flags.DEFINE_integer('batch_size', 2, help='The batch size.')
 
@@ -248,14 +246,13 @@ def rollout(
 
 def predict(
         simulator: learned_simulator.LearnedSimulator,
-        metadata: json,
-        nsteps: int):
+        metadata: json):
   """Predict rollouts.
 
   Args: 
     simulator: Trained simulator if not will undergo training.
     metadata: Metadata for test set.
-    nsteps: Predict nrollout steps. 
+
   """
 
   # Load simulator
@@ -268,9 +265,11 @@ def predict(
   if not os.path.exists(FLAGS.output_path):
     os.makedirs(FLAGS.output_path)
 
+  # Use `valid`` set for eval mode if not use `test`
+  split = 'test' if FLAGS.mode == 'rollout' else 'valid'
   ds = prepare_input_data(FLAGS.data_path,
                           batch_size=FLAGS.batch_size,
-                          mode='rollout', split='test')
+                          mode='rollout', split=split)
 
   eval_loss = []
   with torch.no_grad():
@@ -285,19 +284,19 @@ def predict(
 
       nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
       # Predict example rollout
-      example_rollout, loss = rollout(
-          simulator, features, nsteps)
+      example_rollout, loss = rollout(simulator, features, nsteps)
 
       example_rollout['metadata'] = metadata
       print("Predicting example {} loss: {}".format(example_i, loss.mean()))
       eval_loss.append(loss)
 
-      # Save file
-      example_rollout['metadata'] = metadata
-      filename = f'rollout_{example_i}.pkl'
-      filename = os.path.join(FLAGS.output_path, filename)
-      with open(filename, 'wb') as f:
-        pickle.dump(example_rollout, f)
+      # Save rollout in testing
+      if FLAGS.mode == 'test':
+        example_rollout['metadata'] = metadata
+        filename = f'rollout_{example_i}.pkl'
+        filename = os.path.join(FLAGS.output_path, filename)
+        with open(filename, 'wb') as f:
+          pickle.dump(example_rollout, f)
 
   print("Mean loss on rollout prediction: {}".format(
       torch.stack(eval_loss).mean(0)))
@@ -443,7 +442,7 @@ def main(_):
   simulator = _get_simulator(metadata, FLAGS.noise_std, FLAGS.noise_std)
   if FLAGS.mode == 'train':
     train(simulator)
-  elif FLAGS.mode == 'rollout':
+  elif FLAGS.mode in ['valid', 'rollout']:
     predict(simulator, metadata)
 
 
