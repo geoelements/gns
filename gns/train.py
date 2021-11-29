@@ -22,10 +22,9 @@ from gns import reading_utils
 flags.DEFINE_enum(
     'mode', 'train', ['train', 'valid', 'rollout'],
     help='Train model, validation or rollout evaluation.')
-flags.DEFINE_string('data_path', None, help='The dataset directory.')
 flags.DEFINE_integer('batch_size', 2, help='The batch size.')
-
 flags.DEFINE_float('noise_std', 6.7e-4, help='The std deviation of the noise.')
+flags.DEFINE_string('data_path', None, help='The dataset directory.')
 flags.DEFINE_string('model_path', 'models/',
                     help=('The path for saving checkpoints of the model. '
                           'Defaults to a temporary directory.'))
@@ -34,7 +33,8 @@ flags.DEFINE_string('output_path', 'rollouts/',
 
 flags.DEFINE_integer('ntraining_steps', int(2e7),
                      help='Number of training steps.')
-flags.DEFINE_integer('nsave_freq', int(5), help='Model save frequency (%).')
+flags.DEFINE_integer('nsave_steps', int(
+    1000), help='Number of steps at which to save the model.')
 
 # Learning rate parameters
 flags.DEFINE_float('lr_init', 1e-4, help='Initial learning rate.')
@@ -325,10 +325,6 @@ def train(
   ds = prepare_input_data(FLAGS.data_path,
                           batch_size=FLAGS.batch_size)
 
-  # Frequency to save 5%
-  nsave_steps = int(FLAGS.ntraining_steps/100 * FLAGS.nsave_freq)
-  nsave_steps = 1 if nsave_steps == 0 else nsave_steps
-
   step = 0
   try:
     for features, labels in ds:
@@ -373,34 +369,37 @@ def train(
       for param in optimizer.param_groups:
         param['lr'] = lr_new
 
-      step += 1
       print('Training step: {}/{}. Loss: {}.'.format(step,
                                                      FLAGS.ntraining_steps,
                                                      loss))
       # Save model state
-      if step % nsave_steps == 0:
-        simulator.save(model_path + 'model.pt')
+      if step % FLAGS.nsave_steps == 0:
+        simulator.save(model_path + 'model-'+str(step)+'.pt')
 
       # Complete training
       if (step > FLAGS.ntraining_steps):
         break
 
+      step += 1
+
   except KeyboardInterrupt:
     pass
 
-  simulator.save(model_path + 'model.pt')
+  simulator.save(model_path + 'model-'+str(step)+'.pt')
 
 
 def _get_simulator(
         metadata: json,
         acc_noise_std: float,
-        vel_noise_std: float) -> learned_simulator.LearnedSimulator:
+        vel_noise_std: float,
+        device: str) -> learned_simulator.LearnedSimulator:
   """Instantiates the simulator.
 
   Args:
     metadata: JSON object with metadata.
     acc_noise_std: Acceleration noise std deviation.
     vel_noise_std: Velocity noise std deviation.
+    device: PyTorch device 'cpu' or 'cuda'.
   """
 
   # Normalization stats
@@ -436,10 +435,13 @@ def _get_simulator(
 
 
 def main(_):
-  """Train or evaluates the model."""
+  """Train or evaluates the model.
+
+  """
   # Read metadata
   metadata = reading_utils.read_metadata(FLAGS.data_path)
-  simulator = _get_simulator(metadata, FLAGS.noise_std, FLAGS.noise_std)
+  simulator = _get_simulator(
+      metadata, FLAGS.noise_std, FLAGS.noise_std, device)
   if FLAGS.mode == 'train':
     train(simulator)
   elif FLAGS.mode in ['valid', 'rollout']:
