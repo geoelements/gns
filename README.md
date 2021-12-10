@@ -1,6 +1,16 @@
 # Graph Network Simulator
 
-## Getting Started
+## Run GNS
+> Training
+```shell
+python3 -m gns.train --data_path='../datasets/WaterDropSample/'
+```
+
+> Rollout
+```shell
+@@ -17,6 +12,35 @@ python3 -m gns.train --mode='rollout' --data_path='../datasets/WaterDropSample/'
+ python3 -m gns.render_rollout --rollout_path='../rollouts/WaterDropSample/rollout_0.pkl' 
+```
 
 > Rollout
 ```shell
@@ -12,7 +22,7 @@ python3 -m gns.train --mode='rollout' --data_path='../datasets/WaterDropSample/'
  python3 -m gns.render_rollout --rollout_path='../rollouts/WaterDropSample/rollout_0.pkl' 
 ```
 
-### Building Environment on Frontera
+### Configure environment on TACC Frontera
 
 - setup a virtualenv
 ```
