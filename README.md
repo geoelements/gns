@@ -2,9 +2,14 @@
 
 ## Run GNS
 > Training
-
 ```shell
 python3 -m gns.train --data_path='../datasets/WaterDropSample/'
+```
+
+> Rollout
+```shell
+@@ -17,6 +12,35 @@ python3 -m gns.train --mode='rollout' --data_path='../datasets/WaterDropSample/'
+ python3 -m gns.render_rollout --rollout_path='../rollouts/WaterDropSample/rollout_0.pkl' 
 ```
 
 > Rollout
@@ -17,6 +22,35 @@ python3 -m gns.train --mode='rollout' --data_path='../datasets/WaterDropSample/'
  python3 -m gns.render_rollout --rollout_path='../rollouts/WaterDropSample/rollout_0.pkl' 
 ```
 
+### Configure environment on TACC Frontera
+
+- setup a virtualenv
+```
+ml use /work2/02604/ajs2987/frontera/apps/modulefiles
+ml cuda/11.1
+module load python3/3.9.2
+
+python3 -m virtualenv venv
+source venv/bin/activate
+
+which pip3
+pip3 install torch==1.10.0+cu111 torchvision==0.11.1+cu111 torchaudio==0.10.0+cu111 -f https://download.pytorch.org/whl/cu111/torch_stable.html
+pip3 install torch-spline-conv -f https://data.pyg.org/whl/torch-1.10.0+cu111.html --no-binary torch-spline-conv
+pip3 install torch-scatter torch-sparse torch-cluster torch-geometric -f https://data.pyg.org/whl/torch-1.10.0+cu111.html
+```
+
+- test pytorch with gpu
+
+```python
+import torch
+print(torch.cuda.is_available()) # --> True
+=======
+## Run GNS
+> Training
+
+```shell
+python3 -m gns.train --data_path='../datasets/WaterDropSample/'
+```
 ## Datasets
 
 Datasets are available to download via:
