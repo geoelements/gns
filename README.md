@@ -38,12 +38,6 @@ pip3 install torch-scatter torch-sparse torch-cluster torch-geometric -f https:/
 ```python
 import torch
 print(torch.cuda.is_available()) # --> True
-=======
-## Run GNS
-> Training
-
-```shell
-python3 -m gns.train --data_path='../datasets/WaterDropSample/'
 ```
 ## Datasets
 
