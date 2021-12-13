@@ -31,10 +31,10 @@ flags.DEFINE_string('model_path', 'models/',
 flags.DEFINE_string('output_path', 'rollouts/',
                     help='The path for saving outputs (e.g. rollouts).')
 
-flags.DEFINE_integer('ntraining_steps', int(2e7),
+flags.DEFINE_integer('ntraining_steps', int(5E5),
                      help='Number of training steps.')
 flags.DEFINE_integer('nsave_steps', int(
-    1000), help='Number of steps at which to save the model.')
+    5000), help='Number of steps at which to save the model.')
 
 # Learning rate parameters
 flags.DEFINE_float('lr_init', 1e-4, help='Initial learning rate.')

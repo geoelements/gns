@@ -1,0 +1,12 @@
+which python -> venv
+/work2/04709/vantaj94/frontera/tacc/projects/cognitasium/gns/venv/bin/python
+test_pytorch.py -> random tensor
+tensor([[0.0810, 0.7932, 0.9340],
+        [0.4115, 0.2777, 0.4358],
+        [0.4376, 0.1626, 0.7375],
+        [0.2441, 0.7006, 0.0347],
+        [0.3403, 0.3968, 0.0891]])
+test_pytorch_cuda_gpu.py -> True if GPU
+True
+cuda
+test_torch_geometric.py -> no retun if import sucessful
