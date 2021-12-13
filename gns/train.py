@@ -249,7 +249,7 @@ def predict(
         metadata: json):
   """Predict rollouts.
 
-  Args: 
+
     simulator: Trained simulator if not will undergo training.
     metadata: Metadata for test set.
 
@@ -326,6 +326,11 @@ def train(
                           batch_size=FLAGS.batch_size)
 
   step = 0
+
+  # Network to GPU
+  simulator.to(device)
+
+  print(f"device = {device}")
   try:
     for features, labels in ds:
       features['position'] = torch.tensor(
@@ -345,11 +350,11 @@ def train(
 
       # Get the predictions and target accelerations.
       pred_acc, target_acc = simulator.predict_accelerations(
-          next_positions=labels,
-          position_sequence_noise=sampled_noise,
-          position_sequence=features['position'],
-          nparticles_per_example=features['n_particles_per_example'],
-          particle_types=features['particle_type'])
+          next_positions=labels.to(device),
+          position_sequence_noise=sampled_noise.to(device),
+          position_sequence=features['position'].to(device),
+          nparticles_per_example=features['n_particles_per_example'].to(device),
+          particle_types=features['particle_type'].to(device))
 
       # Calculate the loss and mask out loss on kinematic particles
       loss = (pred_acc - target_acc) ** 2
