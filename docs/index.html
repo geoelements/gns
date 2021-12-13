@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Graph Network Simulator</title>
+  <link rel="icon" href="_media/favicon.ico">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="description" content="Graph Network Simulator">
+  <meta name="viewport"
+    content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+  <link rel="stylesheet" href="theme/vue.css">
+</head>
+
+<body>
+  <div id="app"></div>
+  <script>
+    window.$docsify = {
+      name: 'Graph Network Simulator',
+      loadSidebar: true,
+      subMaxLevel: 2,
+      search: 'auto',
+      alias: {
+        '/.*/_sidebar.md': '/_sidebar.md'
+      },
+      themeColor: '#bf5700',
+      repo: 'https://github.com/geoelements/wiki-template',
+      plugins: [
+        function (hook) {
+          hook.beforeEach(function (content) {
+            return content.replace(/\$\$([\s\S]*?)\$\$/g,
+              function (x) { return x.replace(/[_]/g, '[subscript]') }
+            )
+          })
+          hook.beforeEach(function (content) {
+            return content.replace(/\$([\s\S]*?)\$/g,
+              function (x) { return x.replace('_', '[subscript]') }
+            )
+          })
+          hook.afterEach(function (html, next) {
+            html = html.replace(/\$\$([\s\S]*?)\$\$/g,
+              function (x) { return x.replace(/(\[subscript\])/g, '_') }
+            )
+            html = html.replace(/\$([\s\S]*?)\$/g,
+              function (x) { return x.replace(/(\[subscript\])/g, '_') }
+            )
+            MathJax.Hub.Queue(["Typeset", MathJax.Hub]) // calling it twice
+            MathJax.Hub.Queue(["Typeset", MathJax.Hub]) //fixes MathJax refresh issue
+            next(html)
+          })
+        }
+      ]
+    }
+  </script>
+  <script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+      extensions: ["tex2jax.js"],
+      jax: ["input/TeX", "output/HTML-CSS"],
+      tex2jax: {
+        inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+        displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+        processEscapes: true
+      },
+      "HTML-CSS": { availableFonts: ["TeX"] }
+    });
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/docsify/4.9.4/docsify.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/docsify/4.9.4/plugins/search.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/docsify/4.9.4/plugins/zoom-image.min.js"></script>
+  <script src="//unpkg.com/docsify-pagination/dist/docsify-pagination.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.17.1/components/prism-python.min.js"></script>
+  <!-- offline mode -->
+  <script>
+    if (typeof navigator.serviceWorker !== 'undefined') {
+      navigator.serviceWorker.register('sw.js')
+    }
+  </script>
+</body>
+
+</html>
