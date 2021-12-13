@@ -23,14 +23,14 @@ python3 -m gns.train --mode='rollout' --data_path='../datasets/WaterDropSample/'
 - run the follow to setup a virtualenv
 
 ```bash
-bash build_env.sh
+bash build_venv.sh
 ```
 
 - check tests run sucessfully.
 - start your environment
 
 ```bash
-source start_env.sh 
+source start_venv.sh 
 ```
 
 ## Datasets

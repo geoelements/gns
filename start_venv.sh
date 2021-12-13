@@ -6,6 +6,7 @@ module reset
 # ---------
 ml use /work2/02064/ajs2987/frontera/apps/modulefiles
 ml cuda/11.1
+module load phdf5
 module load python3/3.9.2
 #export LD_LIBRARY_PATH=/work2/02064/ajs2987/frontera/apps/cuda/11.1/lib64/:${LD_LIBRARY_PATH}   
 
