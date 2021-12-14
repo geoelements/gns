@@ -256,8 +256,8 @@ def predict(
   """
 
   # Load simulator
-  if os.path.exists(FLAGS.model_path + 'model.pt'):
-    simulator.load(FLAGS.model_path + 'model.pt')
+  if os.path.exists(FLAGS.model_path):
+    simulator.load(FLAGS.model_path)
   else:
     train(simulator)
 
@@ -270,6 +270,9 @@ def predict(
   ds = prepare_input_data(FLAGS.data_path,
                           batch_size=FLAGS.batch_size,
                           mode='rollout', split=split)
+
+  # Move model to device
+  simulator.to(device)
 
   eval_loss = []
   with torch.no_grad():
