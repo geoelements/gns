@@ -23,6 +23,9 @@ module reset # -> default is python3/3.7.0
 # ---------
 ml use /work2/02064/ajs2987/frontera/apps/modulefiles
 ml cuda/11.1
+ml cudnn
+ml nccl
+
 module load phdf5
 module load python3/3.9.2
 

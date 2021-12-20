@@ -6,6 +6,9 @@ module reset
 # ---------
 ml use /work2/02064/ajs2987/frontera/apps/modulefiles
 ml cuda/11.1
+ml nccl
+ml cudnn
+
 module load phdf5
 module load python3/3.9.2
 
