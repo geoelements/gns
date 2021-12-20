@@ -51,7 +51,7 @@ NUM_PARTICLE_TYPES = 9
 KINEMATIC_PARTICLE_ID = 3
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+device = torch.device('cpu')
 
 def prepare_inputs(tensor_dict):
   """Prepares a single stack of inputs by calculating inputs and targets.
