@@ -1,6 +1,7 @@
 #!/bin/bash
 
-module reset # -> default is python3/3.7.0
+module reset # -> default is python3/3.7.0 (frontera)
+             # -> default is python3/3.9.7 (ls6)
 
 
 # background
@@ -18,6 +19,8 @@ module reset # -> default is python3/3.7.0
 # frontera
 # only has cuda 10 10.1 11.0 11.3 
 
+# ls6
+# only has cuda 11.4
 
 # create env
 # ---------
@@ -27,7 +30,7 @@ ml cudnn
 ml nccl
 
 module load phdf5
-module load python3/3.9.2
+module load python3/3.9
 
 python3 -m virtualenv venv
 source venv/bin/activate

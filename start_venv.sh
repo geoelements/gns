@@ -10,7 +10,7 @@ ml nccl
 ml cudnn
 
 module load phdf5
-module load python3/3.9.2
+module load python3/3.9
 
 source venv/bin/activate
 
