@@ -249,7 +249,7 @@ def predict(
         metadata: json):
   """Predict rollouts.
 
-    Args:
+  Args:
     simulator: Trained simulator if not will undergo training.
     metadata: Metadata for test set.
 
