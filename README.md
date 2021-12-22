@@ -2,14 +2,13 @@
 
 ## Run GNS
 > Training
-
 ```shell
-python3 -m gns.train --data_path='../datasets/WaterDropSample/'
+python3 -m gns.train --data_path='../datasets/WaterDropSample/' --model_file='model.pt' 
 ```
 
 > Rollout
 ```shell
-python3 -m gns.train --mode='rollout' --data_path='../datasets/WaterDropSample/' --model_path='../models/WaterDropSample/' --output_path='../rollouts'
+python3 -m gns.train --mode='rollout' --data_path='../datasets/WaterDropSample/' --model_path='../models/WaterDropSample/' --model_file='model.pt' --output_path='../rollouts'
 ```
 
 > Render
@@ -77,8 +76,10 @@ An additional smaller dataset `WaterDropSample`, which includes only the first t
 
 
 ```shell
+    # local
     mkdir -p /tmp/datasets
     bash ./download_dataset.sh WaterRamps /tmp/datasets
+    
     # on frontera
     bash ./download_dataset.sh WaterRamps ${SCRATCH}/gns
 ```

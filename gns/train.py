@@ -30,6 +30,7 @@ flags.DEFINE_string('model_path', 'models/',
                           'Defaults to a temporary directory.'))
 flags.DEFINE_string('output_path', 'rollouts/',
                     help='The path for saving outputs (e.g. rollouts).')
+flags.DEFINE_string('model_file', 'model.pt', help=('Model filename (.pt).'))
 
 flags.DEFINE_integer('ntraining_steps', int(5E5),
                      help='Number of training steps.')
@@ -256,8 +257,8 @@ def predict(
   """
 
   # Load simulator
-  if os.path.exists(FLAGS.model_path):
-    simulator.load(FLAGS.model_path)
+  if os.path.exists(FLAGS.model_path + FLAGS.model_file):
+    simulator.load(FLAGS.model_path + FLAGS.model_file)
   else:
     train(simulator)
 
@@ -291,10 +292,10 @@ def predict(
 
       example_rollout['metadata'] = metadata
       print("Predicting example {} loss: {}".format(example_i, loss.mean()))
-      eval_loss.append(loss)
-
+      eval_loss.append(torch.flatten(loss))
+      
       # Save rollout in testing
-      if FLAGS.mode == 'test':
+      if FLAGS.mode == 'rollout':
         example_rollout['metadata'] = metadata
         filename = f'rollout_{example_i}.pkl'
         filename = os.path.join(FLAGS.output_path, filename)
@@ -302,7 +303,7 @@ def predict(
           pickle.dump(example_rollout, f)
 
   print("Mean loss on rollout prediction: {}".format(
-      torch.stack(eval_loss).mean(0)))
+      torch.mean(torch.cat(eval_loss))))
 
 
 def train(
@@ -318,8 +319,8 @@ def train(
   if not os.path.exists(model_path):
     os.makedirs(model_path)
   else:
-    if os.path.exists(model_path + 'model.pt'):
-      simulator.load(model_path + 'model.pt')
+    if os.path.exists(model_path + FLAGS.model_file):
+      simulator.load(model_path + FLAGS.model_file)
 
   # Learning rate parameters
   lr_new = FLAGS.lr_init
