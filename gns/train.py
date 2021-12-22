@@ -30,6 +30,7 @@ flags.DEFINE_string('model_path', 'models/',
                           'Defaults to a temporary directory.'))
 flags.DEFINE_string('output_path', 'rollouts/',
                     help='The path for saving outputs (e.g. rollouts).')
+flags.DEFINE_string('model_file', 'model.pt', help=('Model filename (.pt).'))
 
 flags.DEFINE_integer('ntraining_steps', int(2e7),
                      help='Number of training steps.')
@@ -256,8 +257,8 @@ def predict(
   """
 
   # Load simulator
-  if os.path.exists(FLAGS.model_path + 'model.pt'):
-    simulator.load(FLAGS.model_path + 'model.pt')
+  if os.path.exists(FLAGS.model_path + FLAGS.model_file):
+    simulator.load(FLAGS.model_path + FLAGS.model_file)
   else:
     train(simulator)
 
@@ -315,8 +316,8 @@ def train(
   if not os.path.exists(model_path):
     os.makedirs(model_path)
   else:
-    if os.path.exists(model_path + 'model.pt'):
-      simulator.load(model_path + 'model.pt')
+    if os.path.exists(model_path + FLAGS.model_file):
+      simulator.load(model_path + FLAGS.model_file)
 
   # Learning rate parameters
   lr_new = FLAGS.lr_init
