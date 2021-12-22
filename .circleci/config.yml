@@ -6,7 +6,7 @@ workflows:
       - python37
 
 jobs:
-  python39: &test-template
+  python37: &test-template
     docker:
       - image: cimg/python:3.7.12
     working_directory: ~/repo
