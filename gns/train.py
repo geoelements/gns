@@ -288,10 +288,10 @@ def predict(
 
       example_rollout['metadata'] = metadata
       print("Predicting example {} loss: {}".format(example_i, loss.mean()))
-      eval_loss.append(loss)
-
+      eval_loss.append(torch.flatten(loss))
+      
       # Save rollout in testing
-      if FLAGS.mode == 'test':
+      if FLAGS.mode == 'rollout':
         example_rollout['metadata'] = metadata
         filename = f'rollout_{example_i}.pkl'
         filename = os.path.join(FLAGS.output_path, filename)
@@ -299,7 +299,7 @@ def predict(
           pickle.dump(example_rollout, f)
 
   print("Mean loss on rollout prediction: {}".format(
-      torch.stack(eval_loss).mean(0)))
+      torch.mean(torch.cat(eval_loss))))
 
 
 def train(
