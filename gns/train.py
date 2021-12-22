@@ -32,7 +32,7 @@ flags.DEFINE_string('output_path', 'rollouts/',
                     help='The path for saving outputs (e.g. rollouts).')
 flags.DEFINE_string('model_file', 'model.pt', help=('Model filename (.pt).'))
 
-flags.DEFINE_integer('ntraining_steps', int(5E5),
+flags.DEFINE_integer('ntraining_steps', int(2E7),
                      help='Number of training steps.')
 flags.DEFINE_integer('nsave_steps', int(
     5000), help='Number of steps at which to save the model.')
@@ -52,7 +52,6 @@ NUM_PARTICLE_TYPES = 9
 KINEMATIC_PARTICLE_ID = 3
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-#device = torch.device('cpu')
 
 def prepare_inputs(tensor_dict):
   """Prepares a single stack of inputs by calculating inputs and targets.
@@ -250,7 +249,7 @@ def predict(
         metadata: json):
   """Predict rollouts.
 
-
+    Args:
     simulator: Trained simulator if not will undergo training.
     metadata: Metadata for test set.
 
