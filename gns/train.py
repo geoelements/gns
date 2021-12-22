@@ -32,10 +32,10 @@ flags.DEFINE_string('output_path', 'rollouts/',
                     help='The path for saving outputs (e.g. rollouts).')
 flags.DEFINE_string('model_file', 'model.pt', help=('Model filename (.pt).'))
 
-flags.DEFINE_integer('ntraining_steps', int(2e7),
+flags.DEFINE_integer('ntraining_steps', int(2E7),
                      help='Number of training steps.')
 flags.DEFINE_integer('nsave_steps', int(
-    1000), help='Number of steps at which to save the model.')
+    5000), help='Number of steps at which to save the model.')
 
 # Learning rate parameters
 flags.DEFINE_float('lr_init', 1e-4, help='Initial learning rate.')
@@ -52,7 +52,6 @@ NUM_PARTICLE_TYPES = 9
 KINEMATIC_PARTICLE_ID = 3
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
 
 def prepare_inputs(tensor_dict):
   """Prepares a single stack of inputs by calculating inputs and targets.
@@ -250,7 +249,7 @@ def predict(
         metadata: json):
   """Predict rollouts.
 
-  Args: 
+  Args:
     simulator: Trained simulator if not will undergo training.
     metadata: Metadata for test set.
 
@@ -271,6 +270,9 @@ def predict(
   ds = prepare_input_data(FLAGS.data_path,
                           batch_size=FLAGS.batch_size,
                           mode='rollout', split=split)
+
+  # Move model to device
+  simulator.to(device)
 
   eval_loss = []
   with torch.no_grad():
@@ -327,6 +329,11 @@ def train(
                           batch_size=FLAGS.batch_size)
 
   step = 0
+
+  # Network to GPU
+  simulator.to(device)
+
+  print(f"device = {device}")
   try:
     for features, labels in ds:
       features['position'] = torch.tensor(
@@ -346,11 +353,11 @@ def train(
 
       # Get the predictions and target accelerations.
       pred_acc, target_acc = simulator.predict_accelerations(
-          next_positions=labels,
-          position_sequence_noise=sampled_noise,
-          position_sequence=features['position'],
-          nparticles_per_example=features['n_particles_per_example'],
-          particle_types=features['particle_type'])
+          next_positions=labels.to(device),
+          position_sequence_noise=sampled_noise.to(device),
+          position_sequence=features['position'].to(device),
+          nparticles_per_example=features['n_particles_per_example'].to(device),
+          particle_types=features['particle_type'].to(device))
 
       # Calculate the loss and mask out loss on kinematic particles
       loss = (pred_acc - target_acc) ** 2
