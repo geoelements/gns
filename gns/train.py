@@ -383,6 +383,8 @@ def train(
       # Save model state
       if step % FLAGS.nsave_steps == 0:
         simulator.save(model_path + 'model-'+str(step)+'.pt')
+      
+      torch.cuda.empty_cache()
 
       # Complete training
       if (step > FLAGS.ntraining_steps):

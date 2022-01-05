@@ -11,14 +11,15 @@
 #SBATCH -A BCS20003          # Project/Allocation name (req'd if you have more than 1)
 
 # fail on error
-#set -e
+set -e
 
 # start in slurm_scripts
 cd ..
 source start_venv.sh
 
 # assume data is already downloaded and hardcode WaterDropSample
-python3 -m gns.train --data_path="${SCRATCH}/gns_pytorch/WaterDropSample/dataset" \
---model_path="${SCRATCH}/gns_pytorch/WaterDropSample/models/" \
---output_path="${SCRATCH}/gns_pytorch/WaterDropSample/rollouts/"
+data="Sand"
+python3 -m gns.train --data_path="${SCRATCH}/gns_pytorch/${data}/dataset" \
+--model_path="${SCRATCH}/gns_pytorch/${data}/models/" \
+--output_path="${SCRATCH}/gns_pytorch/${data}/rollouts/"
 
