@@ -25,23 +25,18 @@ flags.DEFINE_enum(
 flags.DEFINE_integer('batch_size', 2, help='The batch size.')
 flags.DEFINE_float('noise_std', 6.7e-4, help='The std deviation of the noise.')
 flags.DEFINE_string('data_path', None, help='The dataset directory.')
-flags.DEFINE_string('model_path', 'models/',
-                    help=('The path for saving checkpoints of the model. '
-                          'Defaults to a temporary directory.'))
-flags.DEFINE_string('output_path', 'rollouts/',
-                    help='The path for saving outputs (e.g. rollouts).')
+flags.DEFINE_string('model_path', 'models/', help=('The path for saving checkpoints of the model.'))
+flags.DEFINE_string('output_path', 'rollouts/', help='The path for saving outputs (e.g. rollouts).')
 flags.DEFINE_string('model_file', 'model.pt', help=('Model filename (.pt).'))
 
-flags.DEFINE_integer('ntraining_steps', int(2E7),
-                     help='Number of training steps.')
-flags.DEFINE_integer('nsave_steps', int(
-    5000), help='Number of steps at which to save the model.')
+flags.DEFINE_integer('ntraining_steps', int(2E7), help='Number of training steps.')
+flags.DEFINE_integer('nsave_steps', int(5000), help='Number of steps at which to save the model.')
 
 # Learning rate parameters
+flags.DEFINE_string('train_state_file', 'train_state.pt', help=('Train state filename (.pt).'))
 flags.DEFINE_float('lr_init', 1e-4, help='Initial learning rate.')
 flags.DEFINE_float('lr_decay', 0.1, help='Learning rate decay.')
-flags.DEFINE_integer('lr_decay_steps', int(
-    5e6), help='Learning rate decay steps.')
+flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps.')
 
 FLAGS = flags.FLAGS
 
@@ -312,26 +307,35 @@ def train(
   Args:
     simulator: Get LearnedSimulator.
   """
-
-  # Model path
+  # If model_path does not exist create new directory and begin training.
   model_path = FLAGS.model_path
   if not os.path.exists(model_path):
     os.makedirs(model_path)
-  else:
-    if os.path.exists(model_path + FLAGS.model_file):
+    optimizer = torch.optim.Adam(simulator.parameters(), lr=FLAGS.lr_init)
+    step = 0
+
+  # If model_path does exist and model_file and train_state_file exist continue training.
+  elif os.path.exists(model_path + FLAGS.model_file) and os.path.exists(model_path + FLAGS.train_state_file):
+      # load model
       simulator.load(model_path + FLAGS.model_file)
 
-  # Learning rate parameters
-  lr_new = FLAGS.lr_init
-  optimizer = torch.optim.Adam(simulator.parameters(), lr=FLAGS.lr_init)
+      # load train state
+      train_state = torch.load(model_path + FLAGS.train_state_file)
+      # set optimizer state
+      optimizer = torch.optim.Adam(simulator.parameters())
+      optimizer.load_state_dict(train_state["optimizer_state"])
+      # set global train state
+      step = train_state["global_train_state"].pop("step")
+ 
+  else:
+    msg = f"Specified model_file {model_path + FLAGS.model_file} and train_state_file {model_path + FLAGS.train_state_file} not found."
+    raise FileNotFoundError(msg) 
+
+  simulator.train()
+  simulator.to(device)
 
   ds = prepare_input_data(FLAGS.data_path,
                           batch_size=FLAGS.batch_size)
-
-  step = 0
-
-  # Network to GPU
-  simulator.to(device)
 
   print(f"device = {device}")
   try:
@@ -383,8 +387,8 @@ def train(
       # Save model state
       if step % FLAGS.nsave_steps == 0:
         simulator.save(model_path + 'model-'+str(step)+'.pt')
-      
-      torch.cuda.empty_cache()
+        train_state = dict(optimizer_state=optimizer.state_dict(), global_train_state={"step":step})
+        torch.save(optimizer.state_dict(), f"{model_path}train_state-{step}.pt")
 
       # Complete training
       if (step > FLAGS.ntraining_steps):
@@ -396,6 +400,8 @@ def train(
     pass
 
   simulator.save(model_path + 'model-'+str(step)+'.pt')
+  train_state = dict(optimizer_state=optimizer.state_dict(), global_train_state={"step":step})
+  torch.save(train_state, f"{model_path}train_state-{step}.pt")
 
 
 def _get_simulator(
