@@ -1,36 +1,36 @@
 # Graph Network Simulator
+> PyTorch version of Graph Network Simulator based on [https://arxiv.org/abs/2002.09405](https://arxiv.org/abs/2002.09405) and [https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate](https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate).
 
 ## Run GNS
 > Training
 ```shell
-python3 -m gns.train --data_path='../datasets/WaterDropSample/' --model_file='model.pt' 
+export DATASET_NAME="Sand"
+export WORK_DIR=${WORK_DIR}/
+python3 -m gns.train --data_path="${WORK_DIR}/datasets/${DATASET_NAME}/" --model_path="${WORK_DIR}/models/${DATASET_NAME}/" --output_path="${WORK_DIR}/rollouts/${DATASET_NAME}/" -ntraining_steps=100
+```
+
+> Resume training
+
+To resume training specify `model_file` and `train_state_file`:
+
+```shell
+export DATASET_NAME="Sand"
+export WORK_DIR=${WORK_DIR}/
+python3 -m gns.train --data_path="${WORK_DIR}/datasets/${DATASET_NAME}/" --model_path="${WORK_DIR}/models/${DATASET_NAME}/" --output_path="${WORK_DIR}/rollouts/${DATASET_NAME}/" --model_file="model.pt" --train_state_file="train_state.pt" -ntraining_steps=100
 ```
 
 > Rollout
 ```shell
-python3 -m gns.train --mode='rollout' --data_path='../datasets/WaterDropSample/' --model_path='../models/WaterDropSample/' --model_file='model.pt' --output_path='../rollouts'
+python3 -m gns.train --mode='rollout' --data_path='${WORK_DIR}/datasets/${DATASET_NAME}/' --model_path='${WORK_DIR}/models/${DATASET_NAME}/' --model_file='model.pt' --output_path='${WORK_DIR}/rollouts'
 ```
 
 > Render
 ```shell
- python3 -m gns.render_rollout --rollout_path='../rollouts/WaterDropSample/rollout_0.pkl' 
+ python3 -m gns.render_rollout --rollout_path='${WORK_DIR}/rollouts/${DATASET_NAME}/rollout_0.pkl' 
 ```
 
-### Building Environment on Frontera
-
-- ssh to frontera, start an idev session on rtx node (i.e., GPU-enabled node)
-- run the follow to setup a virtualenv
-
-```bash
-bash build_venv.sh
-```
-
-- check tests run sucessfully.
-- start your environment
-
-```bash
-source start_venv.sh 
-```
+![Sand rollout](rollout_0.gif)
+> GNS prediction of Sand rollout after training for 2 million steps.
 
 ## Datasets
 
@@ -70,16 +70,32 @@ Where:
 
 The provided script `./download_dataset.sh` may be used to download all files from each dataset into a folder given its name.
 
-An additional smaller dataset `WaterDropSample`, which includes only the first two trajectories of `WaterDrop` for each split, is provided for debugging purposes.
+An additional smaller dataset `${DATASET_NAME}`, which includes only the first two trajectories of `WaterDrop` for each split, is provided for debugging purposes.
 
-### Download dataset (e.g., WaterRamps)
+### Download dataset (e.g., Sand)
 
 
 ```shell
+    export DATASET_NAME="Sand"
     # local
     mkdir -p /tmp/datasets
-    bash ./download_dataset.sh WaterRamps /tmp/datasets
+    sh ./download_dataset.sh ${DATASET_NAME} /tmp/datasets
     
     # on frontera
-    bash ./download_dataset.sh WaterRamps ${SCRATCH}/gns
+    sh ./download_dataset.sh ${DATASET_NAME} ${SCRATCH}/gns
+```
+
+## Building environment on TACC LS6 and Frontera
+
+- to setup a virtualenv
+
+```shell
+sh ./build_venv.sh
+```
+
+- check tests run sucessfully.
+- start your environment
+
+```shell
+source start_venv.sh 
 ```

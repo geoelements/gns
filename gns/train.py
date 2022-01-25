@@ -27,13 +27,13 @@ flags.DEFINE_float('noise_std', 6.7e-4, help='The std deviation of the noise.')
 flags.DEFINE_string('data_path', None, help='The dataset directory.')
 flags.DEFINE_string('model_path', 'models/', help=('The path for saving checkpoints of the model.'))
 flags.DEFINE_string('output_path', 'rollouts/', help='The path for saving outputs (e.g. rollouts).')
-flags.DEFINE_string('model_file', 'model.pt', help=('Model filename (.pt).'))
+flags.DEFINE_string('model_file', None, help=('Model filename (.pt) to resume from.'))
+flags.DEFINE_string('train_state_file', 'train_state.pt', help=('Train state filename (.pt).'))
 
 flags.DEFINE_integer('ntraining_steps', int(2E7), help='Number of training steps.')
 flags.DEFINE_integer('nsave_steps', int(5000), help='Number of steps at which to save the model.')
 
 # Learning rate parameters
-flags.DEFINE_string('train_state_file', 'train_state.pt', help=('Train state filename (.pt).'))
 flags.DEFINE_float('lr_init', 1e-4, help='Initial learning rate.')
 flags.DEFINE_float('lr_decay', 0.1, help='Learning rate decay.')
 flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps.')
@@ -307,15 +307,17 @@ def train(
   Args:
     simulator: Get LearnedSimulator.
   """
+  optimizer = torch.optim.Adam(simulator.parameters(), lr=FLAGS.lr_init)
+  step = 0
   # If model_path does not exist create new directory and begin training.
   model_path = FLAGS.model_path
   if not os.path.exists(model_path):
     os.makedirs(model_path)
-    optimizer = torch.optim.Adam(simulator.parameters(), lr=FLAGS.lr_init)
-    step = 0
+    
 
   # If model_path does exist and model_file and train_state_file exist continue training.
-  elif os.path.exists(model_path + FLAGS.model_file) and os.path.exists(model_path + FLAGS.train_state_file):
+  if FLAGS.model_file is not None:
+    if os.path.exists(model_path + FLAGS.model_file) and os.path.exists(model_path + FLAGS.train_state_file):
       # load model
       simulator.load(model_path + FLAGS.model_file)
 
@@ -327,9 +329,9 @@ def train(
       # set global train state
       step = train_state["global_train_state"].pop("step")
  
-  else:
-    msg = f"Specified model_file {model_path + FLAGS.model_file} and train_state_file {model_path + FLAGS.train_state_file} not found."
-    raise FileNotFoundError(msg) 
+    else:
+      msg = f"Specified model_file {model_path + FLAGS.model_file} and train_state_file {model_path + FLAGS.train_state_file} not found."
+      raise FileNotFoundError(msg) 
 
   simulator.train()
   simulator.to(device)
