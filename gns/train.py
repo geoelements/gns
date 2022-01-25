@@ -6,7 +6,7 @@ import os
 import torch
 import pickle
 
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 import tensorflow_datasets as tfds
 import tree
 
@@ -156,6 +156,9 @@ def prepare_input_data(
   """
   # Loads the metadata of the dataset.
   metadata = reading_utils.read_metadata(data_path)
+  # Set CPU as the only available physical device
+  tf.config.set_visible_devices([], 'GPU')
+
   # Create a tf.data.Dataset from the TFRecord.
   ds = tf.data.TFRecordDataset([os.path.join(data_path, f'{split}.tfrecord')])
   ds = ds.map(functools.partial(
