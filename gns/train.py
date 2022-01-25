@@ -396,7 +396,7 @@ def train(
         torch.save(optimizer.state_dict(), f"{model_path}train_state-{step}.pt")
 
       # Complete training
-      if (step > FLAGS.ntraining_steps):
+      if (step >= FLAGS.ntraining_steps):
         break
 
       step += 1
