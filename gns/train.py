@@ -407,7 +407,7 @@ def train(
       if step % FLAGS.nsave_steps == 0:
         simulator.save(model_path + 'model-'+str(step)+'.pt')
         train_state = dict(optimizer_state=optimizer.state_dict(), global_train_state={"step":step})
-        torch.save(optimizer.state_dict(), f"{model_path}train_state-{step}.pt")
+        torch.save(train_state, f"{model_path}train_state-{step}.pt")
 
       # Complete training
       if (step >= FLAGS.ntraining_steps):

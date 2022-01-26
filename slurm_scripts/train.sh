@@ -6,7 +6,7 @@
 #SBATCH -p rtx               # Queue (partition) name
 #SBATCH -N 1                 # Total # of nodes (must be 1 for serial)
 #SBATCH -n 1                 # Total # of mpi tasks (should be 1 for serial)
-#SBATCH -t 15:00:00          # Run time (hh:mm:ss)
+#SBATCH -t 48:00:00          # Run time (hh:mm:ss)
 #SBATCH --mail-type=all      # Send email at begin and end of job
 #SBATCH -A BCS20003          # Project/Allocation name (req'd if you have more than 1)
 
@@ -21,5 +21,6 @@ source start_venv.sh
 data="Sand"
 python3 -m gns.train --data_path="${SCRATCH}/gns_pytorch/${data}/dataset" \
 --model_path="${SCRATCH}/gns_pytorch/${data}/models/" \
---output_path="${SCRATCH}/gns_pytorch/${data}/rollouts/"
-
+--output_path="${SCRATCH}/gns_pytorch/${data}/rollouts/" \
+--model_file="model-5000.pt" \
+--train_state_file="train_state-5000.pt"
