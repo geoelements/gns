@@ -302,6 +302,19 @@ def predict(
   print("Mean loss on rollout prediction: {}".format(
       torch.mean(torch.cat(eval_loss))))
 
+def optimizer_to(optim, device):
+  for param in optim.state.values():
+    # Not sure there are any global tensors in the state dict
+    if isinstance(param, torch.Tensor):
+      param.data = param.data.to(device)
+      if param._grad is not None:
+        param._grad.data = param._grad.data.to(device)
+    elif isinstance(param, dict):
+      for subparam in param.values():
+        if isinstance(subparam, torch.Tensor):
+          subparam.data = subparam.data.to(device)
+          if subparam._grad is not None:
+            subparam._grad.data = subparam._grad.data.to(device)
 
 def train(
         simulator: learned_simulator.LearnedSimulator):
@@ -329,6 +342,7 @@ def train(
       # set optimizer state
       optimizer = torch.optim.Adam(simulator.parameters())
       optimizer.load_state_dict(train_state["optimizer_state"])
+      optimizer_to(optimizer, device)
       # set global train state
       step = train_state["global_train_state"].pop("step")
  
