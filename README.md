@@ -29,7 +29,7 @@ python3 -m gns.train --mode='rollout' --data_path='${WORK_DIR}/datasets/${DATASE
  python3 -m gns.render_rollout --rollout_path='${WORK_DIR}/rollouts/${DATASET_NAME}/rollout_0.pkl' 
 ```
 
-![Sand rollout](rollout_0.gif)
+![Sand rollout](figs/rollout_0.gif)
 > GNS prediction of Sand rollout after training for 2 million steps.
 
 ## Datasets
