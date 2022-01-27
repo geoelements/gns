@@ -5,6 +5,8 @@ import numpy as np
 import os
 import torch
 import pickle
+import glob
+import re
 
 import tensorflow as tf
 import tensorflow_datasets as tfds
@@ -27,8 +29,8 @@ flags.DEFINE_float('noise_std', 6.7e-4, help='The std deviation of the noise.')
 flags.DEFINE_string('data_path', None, help='The dataset directory.')
 flags.DEFINE_string('model_path', 'models/', help=('The path for saving checkpoints of the model.'))
 flags.DEFINE_string('output_path', 'rollouts/', help='The path for saving outputs (e.g. rollouts).')
-flags.DEFINE_string('model_file', None, help=('Model filename (.pt) to resume from.'))
-flags.DEFINE_string('train_state_file', 'train_state.pt', help=('Train state filename (.pt).'))
+flags.DEFINE_string('model_file', None, help=('Model filename (.pt) to resume from. Can also use "latest" to default to newest file.'))
+flags.DEFINE_string('train_state_file', 'train_state.pt', help=('Train state filename (.pt) to resume from. Can also use "latest" to default to newest file.'))
 
 flags.DEFINE_integer('ntraining_steps', int(2E7), help='Number of training steps.')
 flags.DEFINE_integer('nsave_steps', int(5000), help='Number of steps at which to save the model.')
@@ -38,6 +40,8 @@ flags.DEFINE_float('lr_init', 1e-4, help='Initial learning rate.')
 flags.DEFINE_float('lr_decay', 0.1, help='Learning rate decay.')
 flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps.')
 
+flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
+
 FLAGS = flags.FLAGS
 
 Stats = collections.namedtuple('Stats', ['mean', 'std'])
@@ -46,7 +50,6 @@ INPUT_SEQUENCE_LENGTH = 6  # So we can calculate the last 5 velocities.
 NUM_PARTICLE_TYPES = 9
 KINEMATIC_PARTICLE_ID = 3
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def prepare_inputs(tensor_dict):
   """Prepares a single stack of inputs by calculating inputs and targets.
@@ -244,7 +247,8 @@ def rollout(
 
 def predict(
         simulator: learned_simulator.LearnedSimulator,
-        metadata: json):
+        metadata: json,
+        device):
   """Predict rollouts.
 
   Args:
@@ -317,7 +321,8 @@ def optimizer_to(optim, device):
             subparam._grad.data = subparam._grad.data.to(device)
 
 def train(
-        simulator: learned_simulator.LearnedSimulator):
+        simulator: learned_simulator.LearnedSimulator,
+        device):
   """Train the model.
 
   Args:
@@ -333,6 +338,20 @@ def train(
 
   # If model_path does exist and model_file and train_state_file exist continue training.
   if FLAGS.model_file is not None:
+
+    if FLAGS.model_file == "latest" and FLAGS.train_state_file == "latest":
+      # find the latest model, assumes model and train_state files are in step.
+      fnames = glob.glob(f"{model_path}*model*pt")
+      max_model_number = 0
+      expr = re.compile(".*model-(\d+).pt")
+      for fname in fnames:
+        model_num = int(expr.search(fname).groups()[0])
+        if model_num > max_model_number:
+          max_model_number = model_num
+      # reset names to point to the latest.
+      FLAGS.model_file = f"model-{max_model_number}.pt"
+      FLAGS.train_state_file = f"train_state-{max_model_number}.pt"
+
     if os.path.exists(model_path + FLAGS.model_file) and os.path.exists(model_path + FLAGS.train_state_file):
       # load model
       simulator.load(model_path + FLAGS.model_file)
@@ -473,14 +492,19 @@ def main(_):
   """Train or evaluates the model.
 
   """
+  # Set device
+  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+  if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
+    device = torch.device(f'cuda:{int(FLAGS.cuda_device_number)}')
+
   # Read metadata
   metadata = reading_utils.read_metadata(FLAGS.data_path)
   simulator = _get_simulator(
       metadata, FLAGS.noise_std, FLAGS.noise_std, device)
   if FLAGS.mode == 'train':
-    train(simulator)
+    train(simulator, device)
   elif FLAGS.mode in ['valid', 'rollout']:
-    predict(simulator, metadata)
+    predict(simulator, metadata, device)
 
 
 if __name__ == '__main__':
