@@ -40,7 +40,7 @@ flags.DEFINE_float('lr_init', 1e-4, help='Initial learning rate.')
 flags.DEFINE_float('lr_decay', 0.1, help='Learning rate decay.')
 flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps.')
 
-flag.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
+flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
 
 FLAGS = flags.FLAGS
 
@@ -50,9 +50,6 @@ INPUT_SEQUENCE_LENGTH = 6  # So we can calculate the last 5 velocities.
 NUM_PARTICLE_TYPES = 9
 KINEMATIC_PARTICLE_ID = 3
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
-  device = torch.device(f'cuda:{int(FLAGS.cuda_device_number)}')
 
 def prepare_inputs(tensor_dict):
   """Prepares a single stack of inputs by calculating inputs and targets.
@@ -250,7 +247,8 @@ def rollout(
 
 def predict(
         simulator: learned_simulator.LearnedSimulator,
-        metadata: json):
+        metadata: json,
+        device):
   """Predict rollouts.
 
   Args:
@@ -323,7 +321,8 @@ def optimizer_to(optim, device):
             subparam._grad.data = subparam._grad.data.to(device)
 
 def train(
-        simulator: learned_simulator.LearnedSimulator):
+        simulator: learned_simulator.LearnedSimulator,
+        device):
   """Train the model.
 
   Args:
@@ -493,14 +492,19 @@ def main(_):
   """Train or evaluates the model.
 
   """
+  # Set device
+  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+  if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
+    device = torch.device(f'cuda:{int(FLAGS.cuda_device_number)}')
+
   # Read metadata
   metadata = reading_utils.read_metadata(FLAGS.data_path)
   simulator = _get_simulator(
       metadata, FLAGS.noise_std, FLAGS.noise_std, device)
   if FLAGS.mode == 'train':
-    train(simulator)
+    train(simulator, device)
   elif FLAGS.mode in ['valid', 'rollout']:
-    predict(simulator, metadata)
+    predict(simulator, metadata, device)
 
 
 if __name__ == '__main__':
