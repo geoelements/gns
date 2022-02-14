@@ -105,6 +105,26 @@ def spawn_train(train_fxn, world_size):
                           join=True)
 
 
+
+def get_data_loader(**kwargs):
+    ds = TFIterableDataset()
+
+    train_sampler = torch.utils.data.distributed.DistributedSampler(
+        ds,
+        num_replicas=args.backend.size(),
+        rank=args.backend.rank()
+    )
+
+    train_loader = torch.utils.data.DataLoader(
+        ds,
+        batch_size=args.batch_size * args.batches_per_allreduce,
+        sampler=train_sampler,
+        **kwargs
+    )
+
+    return train_loader
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Distributed Training.')
