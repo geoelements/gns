@@ -20,6 +20,7 @@ from absl import app
 from gns import learned_simulator
 from gns import noise_utils
 from gns import reading_utils
+from gns import data_loader
 
 flags.DEFINE_enum(
     'mode', 'train', ['train', 'valid', 'rollout'],
@@ -372,34 +373,32 @@ def train(
   simulator.train()
   simulator.to(device)
 
-  ds = prepare_input_data(FLAGS.data_path,
-                          batch_size=FLAGS.batch_size)
+  ds = data_loader.get_data_loader(path = f"{FLAGS.data_path}train.npz",
+                                   input_length_sequence = INPUT_SEQUENCE_LENGTH,
+                                   batch_size = FLAGS.batch_size,
+                                 )
 
   print(f"device = {device}")
   try:
-    for features, labels in ds:
-      features['position'] = torch.tensor(
-          features['position']).to(device)
-      features['n_particles_per_example'] = torch.tensor(
-          features['n_particles_per_example']).to(device)
-      features['particle_type'] = torch.tensor(
-          features['particle_type']).to(device)
-      labels = torch.tensor(labels).to(device)
-
+    for (position, particle_type, n_particles_per_example), labels in ds:
+      position.to(device)
+      particle_type.to(device)
+      n_particles_per_example.to(device)
+      labels.to(device)
+      
+      # TODO (jpv): Move noise addition to data_loader
       # Sample the noise to add to the inputs to the model during training.
-      sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(
-          features['position'], noise_std_last_step=FLAGS.noise_std).to(device)
-      non_kinematic_mask = (
-          features['particle_type'] != 3).clone().detach().to(device)
+      sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(position, noise_std_last_step=FLAGS.noise_std).to(device)
+      non_kinematic_mask = (particle_type != KINEMATIC_PARTICLE_ID).clone().detach().to(device)
       sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
 
       # Get the predictions and target accelerations.
       pred_acc, target_acc = simulator.predict_accelerations(
-          next_positions=labels.to(device),
-          position_sequence_noise=sampled_noise.to(device),
-          position_sequence=features['position'].to(device),
-          nparticles_per_example=features['n_particles_per_example'].to(device),
-          particle_types=features['particle_type'].to(device))
+          next_positions=labels,
+          position_sequence_noise=sampled_noise,
+          position_sequence=position,
+          nparticles_per_example=n_particles_per_example,
+          particle_types=particle_type)
 
       # Calculate the loss and mask out loss on kinematic particles
       loss = (pred_acc - target_acc) ** 2

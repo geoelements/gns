@@ -1,17 +1,16 @@
 import torch
 import numpy as np
 
-from train import prepare_input_data
-
 class TrajectoryDataset(torch.utils.data.Dataset):
 
     def __init__(self, path, input_length_sequence):
-        super().__init__():
+        super().__init__()
         # load dataset stored in npz format
         # data is loaded as dict of tuples
         # of the form (positions, particle_type)
         # convert to list of tuples
-        self._data = list(np.load(path).items())
+        # TODO (jpv): allow_pickle=True is potential security risk. See docs.
+        self._data = [item for _, item in np.load(path, allow_pickle=True).items()]
         
         # length of each trajectory in the dataset
         # excluding the input_length_sequence - 1
@@ -23,7 +22,7 @@ class TrajectoryDataset(torch.utils.data.Dataset):
 
         # pre-compute cumulative lengths
         # to allow fast indexing in __getitem__
-        self._precompute_cumlengths = [sum(self._data_lengths[:x]) for x in range(len(self._length))]
+        self._precompute_cumlengths = [sum(self._data_lengths[:x]) for x in range(len(self._data_lengths))]
         self._precompute_cumlengths = np.array(self._precompute_cumlengths, dtype=int)
 
     def __len__(self):
@@ -33,15 +32,20 @@ class TrajectoryDataset(torch.utils.data.Dataset):
         # Select the trajectory immediately before
         # the one that exceeds the idx (i.e., the one in which
         # idx resides).
-        trajectory_idx = np.argwhere((self._precompute_cumlengths > idx))[0] - 1
+        trajectory_idx = np.searchsorted(self._precompute_cumlengths, idx, side="left")
 
         # Compute index of pick along time-dimension of trajectory.
         start_of_selected_trajectory = self._precompute_cumlengths[trajectory_idx]
         time_idx = self._ignore_nsteps + (idx - start_of_selected_trajectory)
 
         # Prepare training data.
-        trajectory = self._data[trajectory_idx][0][time_idx - self._input_length_sequence+1:time_idx+1]
+        positions = self._data[trajectory_idx][0][time_idx - self._input_length_sequence+1:time_idx+1]
         particle_type = self._data[trajectory_idx][1]
+        n_particles_per_example = positions.shape[1]
         label = self._data[trajectory_idx][0][time_idx+1]
 
-        return ((trajectory, particle_type), label)
+        return ((positions, particle_type, n_particles_per_example), label)
+
+def get_data_loader(path, input_length_sequence, batch_size):
+    dataset = TrajectoryDataset(path, input_length_sequence)
+    return torch.utils.data.DataLoader(dataset, batch_size=batch_size)
