@@ -373,19 +373,19 @@ def train(
   simulator.train()
   simulator.to(device)
 
-  ds = data_loader.get_data_loader(path = f"{FLAGS.data_path}train.npz",
-                                   input_length_sequence = INPUT_SEQUENCE_LENGTH,
-                                   batch_size = FLAGS.batch_size,
+  ds = data_loader.get_data_loader(path=f"{FLAGS.data_path}train.npz",
+                                   input_length_sequence=INPUT_SEQUENCE_LENGTH,
+                                   batch_size=FLAGS.batch_size,
                                  )
 
   print(f"device = {device}")
   try:
-    for (position, particle_type, n_particles_per_example), labels in ds:
+    for ((position, particle_type, n_particles_per_example), labels) in ds:
       position.to(device)
       particle_type.to(device)
       n_particles_per_example.to(device)
       labels.to(device)
-      
+
       # TODO (jpv): Move noise addition to data_loader
       # Sample the noise to add to the inputs to the model during training.
       sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(position, noise_std_last_step=FLAGS.noise_std).to(device)

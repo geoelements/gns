@@ -13,16 +13,15 @@ class TrajectoryDataset(torch.utils.data.Dataset):
         self._data = [item for _, item in np.load(path, allow_pickle=True).items()]
         
         # length of each trajectory in the dataset
-        # excluding the input_length_sequence - 1
+        # excluding the input_length_sequence
         # may (and likely is) variable between data
         self._input_length_sequence = input_length_sequence
-        self._ignore_nsteps = input_length_sequence - 1
-        self._data_lengths = [x.shape[0] - self._ignore_nsteps for x, _ in self._data]
+        self._data_lengths = [x.shape[0] - self._input_length_sequence for x, _ in self._data]
         self._length = sum(self._data_lengths)
 
         # pre-compute cumulative lengths
         # to allow fast indexing in __getitem__
-        self._precompute_cumlengths = [sum(self._data_lengths[:x]) for x in range(len(self._data_lengths))]
+        self._precompute_cumlengths = [sum(self._data_lengths[:x]) for x in range(1, len(self._data_lengths)+1)]
         self._precompute_cumlengths = np.array(self._precompute_cumlengths, dtype=int)
 
     def __len__(self):
@@ -30,22 +29,44 @@ class TrajectoryDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         # Select the trajectory immediately before
-        # the one that exceeds the idx (i.e., the one in which
-        # idx resides).
-        trajectory_idx = np.searchsorted(self._precompute_cumlengths, idx, side="left")
+        # the one that exceeds the idx
+        # (i.e., the one in which idx resides).
+        trajectory_idx = np.searchsorted(self._precompute_cumlengths - 1, idx, side="left")
 
         # Compute index of pick along time-dimension of trajectory.
-        start_of_selected_trajectory = self._precompute_cumlengths[trajectory_idx]
-        time_idx = self._ignore_nsteps + (idx - start_of_selected_trajectory)
+        start_of_selected_trajectory = self._precompute_cumlengths[trajectory_idx-1] if trajectory_idx != 0 else 0
+        time_idx = self._input_length_sequence + (idx - start_of_selected_trajectory)
 
         # Prepare training data.
-        positions = self._data[trajectory_idx][0][time_idx - self._input_length_sequence+1:time_idx+1]
-        particle_type = self._data[trajectory_idx][1]
-        n_particles_per_example = positions.shape[1]
-        label = self._data[trajectory_idx][0][time_idx+1]
+        positions = self._data[trajectory_idx][0][time_idx - self._input_length_sequence:time_idx]
+        positions = np.transpose(positions, (1, 0, 2)) # nparticles, input_sequence_length, dimension
+        particle_type = np.full(positions.shape[0], self._data[trajectory_idx][1], dtype=int)
+        n_particles_per_example = positions.shape[0]
+        label = self._data[trajectory_idx][0][time_idx]
 
         return ((positions, particle_type, n_particles_per_example), label)
 
-def get_data_loader(path, input_length_sequence, batch_size):
+def collate_fn(data):
+    position_list = []
+    particle_type_list = []
+    n_particles_per_example_list = []
+    label_list = []
+
+    for ((positions, particle_type, n_particles_per_example), label) in data:
+        position_list.append(positions)
+        particle_type_list.append(particle_type)
+        n_particles_per_example_list.append(n_particles_per_example)
+        label_list.append(label)
+
+    return ((
+        torch.tensor(np.vstack(position_list)).contiguous(), 
+        torch.tensor(np.concatenate(particle_type_list)).contiguous(),
+        torch.tensor(n_particles_per_example_list).contiguous(),
+        ),
+        torch.tensor(np.vstack(label_list)).contiguous()
+        )
+
+def get_data_loader(path, input_length_sequence, batch_size, shuffle=True):
     dataset = TrajectoryDataset(path, input_length_sequence)
-    return torch.utils.data.DataLoader(dataset, batch_size=batch_size)
+    return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
+                                       pin_memory=True, collate_fn=collate_fn)
