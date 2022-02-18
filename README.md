@@ -99,3 +99,13 @@ sh ./build_venv.sh
 ```shell
 source start_venv.sh 
 ```
+
+## PyTorch Data Loader
+
+The data loader provided with this PyTorch implementation of DeepMind's Graph
+Network Simulator no longer uses the `.tfrecord` format aforementioned. Instead,
+it utilizes the more general `.npz` format. The `.npz` format includes a list of
+tuples of arbitrary length where each tuple is for a different training trajectory
+and is of the form `(position, particle_type)`. `position` is a 3-D tensor of
+shape `(n_time_steps, n_particles, n_dimensions)` and `particle_type` is
+a 1-D tensor of shape `(n_particles)`.  
