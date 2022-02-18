@@ -193,8 +193,11 @@ def prepare_input_data(
 
 def rollout(
         simulator: learned_simulator.LearnedSimulator,
-        features: torch.tensor,
-        nsteps: int):
+        position: torch.tensor,
+        particle_type: torch.tensor,
+        n_particles_per_example: torch.tensor,
+        nsteps: int,
+        device):
   """Rolls out a trajectory by applying the model in sequence.
 
   Args:
@@ -202,8 +205,8 @@ def rollout(
     features: Torch tensor features.
     nsteps: Number of steps.
   """
-  initial_positions = features['position'][:, 0:INPUT_SEQUENCE_LENGTH]
-  ground_truth_positions = features['position'][:, INPUT_SEQUENCE_LENGTH:]
+  initial_positions = position[:, :INPUT_SEQUENCE_LENGTH]
+  ground_truth_positions = position[:, INPUT_SEQUENCE_LENGTH:]
 
   current_positions = initial_positions
   predictions = []
@@ -212,13 +215,12 @@ def rollout(
     # Get next position with shape (nnodes, dim)
     next_position = simulator.predict_positions(
         current_positions,
-        nparticles_per_example=features['n_particles_per_example'],
-        particle_types=features['particle_type'],
+        nparticles_per_example=n_particles_per_example,
+        particle_types=particle_type,
     )
 
     # Update kinematic particles from prescribed trajectory.
-    kinematic_mask = (features['particle_type'] ==
-                      3).clone().detach().to(device)
+    kinematic_mask = (particle_type == KINEMATIC_PARTICLE_ID).clone().detach().to(device)
     next_position_ground_truth = ground_truth_positions[:, step]
     kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, 2)
     next_position = torch.where(
@@ -240,7 +242,7 @@ def rollout(
       'initial_positions': initial_positions.permute(1, 0, 2).cpu().numpy(),
       'predicted_rollout': predictions.cpu().numpy(),
       'ground_truth_rollout': ground_truth_positions.cpu().numpy(),
-      'particle_types': features['particle_type'].cpu().numpy(),
+      'particle_types': particle_type.cpu().numpy(),
   }
 
   return output_dict, loss
@@ -263,6 +265,8 @@ def predict(
     simulator.load(FLAGS.model_path + FLAGS.model_file)
   else:
     train(simulator)
+  simulator.to(device)
+  simulator.eval()
 
   # Output path
   if not os.path.exists(FLAGS.output_path):
@@ -270,27 +274,25 @@ def predict(
 
   # Use `valid`` set for eval mode if not use `test`
   split = 'test' if FLAGS.mode == 'rollout' else 'valid'
-  ds = prepare_input_data(FLAGS.data_path,
-                          batch_size=FLAGS.batch_size,
-                          mode='rollout', split=split)
 
-  # Move model to device
-  simulator.to(device)
+  ds = data_loader.get_data_loader(path=f"{FLAGS.data_path}{split}.npz",
+                                   input_length_sequence=0,
+                                   batch_size=1,
+                                   shuffle=False
+                                 )
 
   eval_loss = []
   with torch.no_grad():
-    for example_i, (features, labels) in enumerate(ds):
-      features['position'] = torch.tensor(
-          features['position']).to(device)
-      features['n_particles_per_example'] = torch.tensor(
-          features['n_particles_per_example']).to(device)
-      features['particle_type'] = torch.tensor(
-          features['particle_type']).to(device)
-      labels = torch.tensor(labels).to(device)
+    for example_i, ((position, particle_type, n_particles_per_example), _) in enumerate(ds):
+      print(position.shape)
+      position.to(device)
+      particle_type.to(device)
+      n_particles_per_example.to(device)
 
       nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
       # Predict example rollout
-      example_rollout, loss = rollout(simulator, features, nsteps)
+      example_rollout, loss = rollout(simulator, position, particle_type,
+                                      n_particles_per_example, nsteps, device)
 
       example_rollout['metadata'] = metadata
       print("Predicting example {} loss: {}".format(example_i, loss.mean()))
@@ -498,8 +500,7 @@ def main(_):
 
   # Read metadata
   metadata = reading_utils.read_metadata(FLAGS.data_path)
-  simulator = _get_simulator(
-      metadata, FLAGS.noise_std, FLAGS.noise_std, device)
+  simulator = _get_simulator(metadata, FLAGS.noise_std, FLAGS.noise_std, device)
   if FLAGS.mode == 'train':
     train(simulator, device)
   elif FLAGS.mode in ['valid', 'rollout']:

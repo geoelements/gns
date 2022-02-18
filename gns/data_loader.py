@@ -59,11 +59,11 @@ def collate_fn(data):
         label_list.append(label)
 
     return ((
-        torch.tensor(np.vstack(position_list)).contiguous(), 
+        torch.tensor(np.vstack(position_list)).to(torch.float32).contiguous(), 
         torch.tensor(np.concatenate(particle_type_list)).contiguous(),
         torch.tensor(n_particles_per_example_list).contiguous(),
         ),
-        torch.tensor(np.vstack(label_list)).contiguous()
+        torch.tensor(np.vstack(label_list)).to(torch.float32).contiguous()
         )
 
 def get_data_loader(path, input_length_sequence, batch_size, shuffle=True):
