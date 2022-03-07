@@ -194,7 +194,7 @@ def prepare_input_data(
 def rollout(
         simulator: learned_simulator.LearnedSimulator,
         position: torch.tensor,
-        particle_type: torch.tensor,
+        particle_types: torch.tensor,
         n_particles_per_example: torch.tensor,
         nsteps: int,
         device):
@@ -216,11 +216,11 @@ def rollout(
     next_position = simulator.predict_positions(
         current_positions,
         nparticles_per_example=n_particles_per_example,
-        particle_types=particle_type,
+        particle_types=particle_types,
     )
-
+    
     # Update kinematic particles from prescribed trajectory.
-    kinematic_mask = (particle_type == KINEMATIC_PARTICLE_ID).clone().detach().to(device)
+    kinematic_mask = (particle_types == KINEMATIC_PARTICLE_ID).clone().detach().to(device)
     next_position_ground_truth = ground_truth_positions[:, step]
     kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, 2)
     next_position = torch.where(
@@ -242,7 +242,7 @@ def rollout(
       'initial_positions': initial_positions.permute(1, 0, 2).cpu().numpy(),
       'predicted_rollout': predictions.cpu().numpy(),
       'ground_truth_rollout': ground_truth_positions.cpu().numpy(),
-      'particle_types': particle_type.cpu().numpy(),
+      'particle_types': particle_types.cpu().numpy(),
   }
 
   return output_dict, loss
@@ -275,23 +275,18 @@ def predict(
   # Use `valid`` set for eval mode if not use `test`
   split = 'test' if FLAGS.mode == 'rollout' else 'valid'
 
-  ds = data_loader.get_data_loader(path=f"{FLAGS.data_path}{split}.npz",
-                                   input_length_sequence=0,
-                                   batch_size=1,
-                                   shuffle=False
-                                 )
+  ds = data_loader.get_data_loader_by_trajectories(path=f"{FLAGS.data_path}{split}.npz")
 
   eval_loss = []
   with torch.no_grad():
-    for example_i, ((position, particle_type, n_particles_per_example), _) in enumerate(ds):
-      print(position.shape)
-      position.to(device)
+    for example_i, (positions, particle_type, n_particles_per_example) in enumerate(ds):
+      positions.to(device)
       particle_type.to(device)
       n_particles_per_example.to(device)
 
       nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
       # Predict example rollout
-      example_rollout, loss = rollout(simulator, position, particle_type,
+      example_rollout, loss = rollout(simulator, positions, particle_type,
                                       n_particles_per_example, nsteps, device)
 
       example_rollout['metadata'] = metadata
@@ -375,10 +370,10 @@ def train(
   simulator.train()
   simulator.to(device)
 
-  ds = data_loader.get_data_loader(path=f"{FLAGS.data_path}train.npz",
-                                   input_length_sequence=INPUT_SEQUENCE_LENGTH,
-                                   batch_size=FLAGS.batch_size,
-                                 )
+  ds = data_loader.get_data_loader_by_samples(path=f"{FLAGS.data_path}train.npz",
+                                              input_length_sequence=INPUT_SEQUENCE_LENGTH,
+                                              batch_size=FLAGS.batch_size,
+                                            )
 
   print(f"device = {device}")
   try:

@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 
-class TrajectoryDataset(torch.utils.data.Dataset):
+class SamplesDataset(torch.utils.data.Dataset):
 
     def __init__(self, path, input_length_sequence):
         super().__init__()
@@ -67,7 +67,40 @@ def collate_fn(data):
         torch.tensor(np.vstack(label_list)).to(torch.float32).contiguous()
         )
 
-def get_data_loader(path, input_length_sequence, batch_size, shuffle=True):
-    dataset = TrajectoryDataset(path, input_length_sequence)
+class TrajectoriesDataset(torch.utils.data.Dataset):
+
+    def __init__(self, path):
+        super().__init__()
+        # load dataset stored in npz format
+        # data is loaded as dict of tuples
+        # of the form (positions, particle_type)
+        # convert to list of tuples
+        # TODO (jpv): allow_pickle=True is potential security risk. See docs.
+        self._data = [item for _, item in np.load(path, allow_pickle=True).items()]
+        self._dimension = self._data[0].shape[-1]
+        self._length = len(self._data)
+
+    def __len__(self):
+        return self._length
+
+    def __getitem__(self, idx):
+        positions, _particle_type = self._data[idx]
+        positions = np.transpose(positions, (1, 0, self._dimension))
+        particle_type = np.full(positions.shape[0], _particle_type, dtype=int)
+        n_particles_per_example = positions.shape[0]
+        return (
+            torch.tensor(positions).to(torch.float32).contiguous(), 
+            torch.tensor(particle_type).contiguous(), 
+            torch.IntTensor(n_particles_per_example)
+        )
+
+
+def get_data_loader_by_samples(path, input_length_sequence, batch_size, shuffle=True):
+    dataset = SamplesDataset(path, input_length_sequence)
     return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
                                        pin_memory=True, collate_fn=collate_fn)
+
+def get_data_loader_by_trajectories(path):
+    dataset = TrajectoriesDataset(path)
+    return torch.utils.data.DataLoader(dataset, batch_size=None, shuffle=False,
+                                       pin_memory=True)
