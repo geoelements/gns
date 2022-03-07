@@ -197,7 +197,7 @@ def rollout(
 def predict(
         simulator: learned_simulator.LearnedSimulator,
         metadata: json,
-        device):
+        device: str):
   """Predict rollouts.
 
   Args:
@@ -210,9 +210,11 @@ def predict(
   if os.path.exists(FLAGS.model_path + FLAGS.model_file):
     simulator.load(FLAGS.model_path + FLAGS.model_file)
   else:
-    train(simulator)
+
+  train(simulator)
   simulator.to(device)
   simulator.eval()
+
 
   # Output path
   if not os.path.exists(FLAGS.output_path):
@@ -265,7 +267,7 @@ def optimizer_to(optim, device):
 
 def train(
         simulator: learned_simulator.LearnedSimulator,
-        device):
+        device: str):
   """Train the model.
 
   Args:
