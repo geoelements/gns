@@ -215,10 +215,10 @@ def rollout(
     # Get next position with shape (nnodes, dim)
     next_position = simulator.predict_positions(
         current_positions,
-        nparticles_per_example=n_particles_per_example,
+        nparticles_per_example=[n_particles_per_example],
         particle_types=particle_types,
     )
-    
+
     # Update kinematic particles from prescribed trajectory.
     kinematic_mask = (particle_types == KINEMATIC_PARTICLE_ID).clone().detach().to(device)
     next_position_ground_truth = ground_truth_positions[:, step]
@@ -282,7 +282,6 @@ def predict(
     for example_i, (positions, particle_type, n_particles_per_example) in enumerate(ds):
       positions.to(device)
       particle_type.to(device)
-      n_particles_per_example.to(device)
 
       nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
       # Predict example rollout

@@ -91,7 +91,7 @@ class TrajectoriesDataset(torch.utils.data.Dataset):
         return (
             torch.tensor(positions).to(torch.float32).contiguous(), 
             torch.tensor(particle_type).contiguous(), 
-            torch.IntTensor(n_particles_per_example)
+            n_particles_per_example
         )
 
 
