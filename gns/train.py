@@ -193,7 +193,8 @@ def prepare_input_data(
 def rollout(
         simulator: learned_simulator.LearnedSimulator,
         features: torch.tensor,
-        nsteps: int):
+        nsteps: int,
+        device):
   """Rolls out a trajectory by applying the model in sequence.
 
   Args:
@@ -289,7 +290,7 @@ def predict(
 
       nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
       # Predict example rollout
-      example_rollout, loss = rollout(simulator, features, nsteps)
+      example_rollout, loss = rollout(simulator, features, nsteps, device)
 
       example_rollout['metadata'] = metadata
       print("Predicting example {} loss: {}".format(example_i, loss.mean()))
