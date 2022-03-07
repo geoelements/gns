@@ -18,7 +18,7 @@ cd ..
 source start_venv.sh
 
 # assume data is already downloaded and hardcode WaterDropSample
-data="Sand"
+data="WaterDropSample"
 python3 -m gns.train --data_path="${SCRATCH}/gns_pytorch/${data}/dataset" \
 --model_path="${SCRATCH}/gns_pytorch/${data}/models/" \
 --output_path="${SCRATCH}/gns_pytorch/${data}/rollouts/"
