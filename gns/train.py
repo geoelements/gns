@@ -1,5 +1,4 @@
 import collections
-import functools
 import json
 import numpy as np
 import os
@@ -8,12 +7,9 @@ import pickle
 import glob
 import re
 
-import tensorflow as tf
-import tensorflow_datasets as tfds
 import tree
 
 from absl import flags
-from absl import logging
 from absl import app
 
 
@@ -140,56 +136,6 @@ def batch_concat(dataset, batch_size):
 
   return windowed_ds.map(
       lambda *x: tree.map_structure(reduce_window, initial_state, x))
-
-
-def prepare_input_data(
-        data_path: str,
-        batch_size: int = 2,
-        mode: str = 'train',
-        split: str = 'train'):
-  """Prepares the input data for learning simulation from tfrecord.
-
-  Args:
-    data_path: the path to the dataset directory.
-    batch_size: the number of graphs in a batch.
-    mode: either 'train' or 'rollout'
-    split: either 'train', 'valid' or 'test'.
-
-  Returns:
-    The input data for the learning simulation model.
-  """
-  # Loads the metadata of the dataset.
-  metadata = reading_utils.read_metadata(data_path)
-  # Set CPU as the only available physical device
-  tf.config.set_visible_devices([], 'GPU')
-
-  # Create a tf.data.Dataset from the TFRecord.
-  ds = tf.data.TFRecordDataset([os.path.join(data_path, f'{split}.tfrecord')])
-  ds = ds.map(functools.partial(
-      reading_utils.parse_serialized_simulation_example, metadata=metadata))
-
-  if mode == 'rollout':
-    ds = ds.map(prepare_rollout_inputs)
-  elif mode == 'train':
-    # Splits an entire trajectory into chunks of 7 steps.
-    # Previous 5 velocities, current velocity and target.
-    split_with_window = functools.partial(
-        reading_utils.split_trajectory,
-        window_length=INPUT_SEQUENCE_LENGTH + 1)
-    ds = ds.flat_map(split_with_window)
-    # Splits a chunk into input steps and target steps
-    ds = ds.map(prepare_inputs)
-    # If in train mode, repeat dataset forever and shuffle.
-    ds = ds.repeat()
-    ds = ds.shuffle(512)
-    # Custom batching on the leading axis.
-    ds = batch_concat(ds, batch_size)
-
-  # Convert to numpy
-  ds = tfds.as_numpy(ds)
-
-  return ds
-
 
 def rollout(
         simulator: learned_simulator.LearnedSimulator,
