@@ -36,9 +36,9 @@ python3 -m virtualenv venv
 source venv/bin/activate
 
 which pip3
-pip3 install torch==1.10.0+cu111 torchvision==0.11.1+cu111 torchaudio==0.10.0+cu111 -f https://download.pytorch.org/whl/cu111/torch_stable.html
-pip3 install torch-spline-conv -f https://data.pyg.org/whl/torch-1.10.0+cu111.html --no-binary torch-spline-conv
-pip3 install torch-scatter torch-sparse torch-cluster torch-geometric -f https://data.pyg.org/whl/torch-1.10.0+cu111.html
+pip3 install torch==1.10.0+cpu torchvision==0.11.1+cpu torchaudio==0.10.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
+pip3 install torch-spline-conv -f https://data.pyg.org/whl/torch-1.10.0+cpu.html --no-binary torch-spline-conv
+pip3 install torch-scatter torch-sparse torch-cluster torch-geometric -f https://data.pyg.org/whl/torch-1.10.0+cpu.html
 pip3 install -r requirements.txt
 
 # test env

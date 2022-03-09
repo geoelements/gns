@@ -356,3 +356,5 @@ def time_diff(
     torch.tensor: Velocity sequence
   """
   return position_sequence[:, 1:] - position_sequence[:, :-1]
+
+#%%

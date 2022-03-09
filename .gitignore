@@ -147,3 +147,7 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# others
+.idea
+debug_yc1.py
+

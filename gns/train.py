@@ -21,6 +21,8 @@ from gns import learned_simulator
 from gns import noise_utils
 from gns import reading_utils
 
+# %%
+
 flags.DEFINE_enum(
     'mode', 'train', ['train', 'valid', 'rollout'],
     help='Train model, validation or rollout evaluation.')
