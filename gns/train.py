@@ -210,8 +210,8 @@ def predict(
   if os.path.exists(FLAGS.model_path + FLAGS.model_file):
     simulator.load(FLAGS.model_path + FLAGS.model_file)
   else:
-
-  train(simulator)
+    train(simulator)
+  
   simulator.to(device)
   simulator.eval()
 
