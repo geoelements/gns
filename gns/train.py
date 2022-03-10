@@ -230,12 +230,12 @@ def predict(
     for example_i, (positions, particle_type, n_particles_per_example) in enumerate(ds):
       positions.to(device)
       particle_type.to(device)
-      n_particles_per_example = torch.int(n_particles_per_example).to(device)
+      n_particles_per_example = torch.tensor([int(n_particles_per_example)], dtype=torch.int32).to(device)
 
       nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
       # Predict example rollout
-      example_rollout, loss = rollout(simulator, positions, particle_type,
-                                      n_particles_per_example, nsteps, device)
+      example_rollout, loss = rollout(simulator, positions.to(device), particle_type.to(device),
+                                      n_particles_per_example.to(device), nsteps, device)
 
       example_rollout['metadata'] = metadata
       print("Predicting example {} loss: {}".format(example_i, loss.mean()))
