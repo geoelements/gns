@@ -230,6 +230,7 @@ def predict(
     for example_i, (positions, particle_type, n_particles_per_example) in enumerate(ds):
       positions.to(device)
       particle_type.to(device)
+      n_particles_per_example = torch.int(n_particles_per_example).to(device)
 
       nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
       # Predict example rollout
@@ -338,11 +339,11 @@ def train(
 
       # Get the predictions and target accelerations.
       pred_acc, target_acc = simulator.predict_accelerations(
-          next_positions=labels,
-          position_sequence_noise=sampled_noise,
-          position_sequence=position,
-          nparticles_per_example=n_particles_per_example,
-          particle_types=particle_type)
+          next_positions=labels.to(device),
+          position_sequence_noise=sampled_noise.to(device),
+          position_sequence=position.to(device),
+          nparticles_per_example=n_particles_per_example.to(device),
+          particle_types=particle_type.to(device))
 
       # Calculate the loss and mask out loss on kinematic particles
       loss = (pred_acc - target_acc) ** 2
