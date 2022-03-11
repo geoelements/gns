@@ -210,8 +210,8 @@ def predict(
   if os.path.exists(FLAGS.model_path + FLAGS.model_file):
     simulator.load(FLAGS.model_path + FLAGS.model_file)
   else:
-
-  train(simulator)
+    train(simulator)
+  
   simulator.to(device)
   simulator.eval()
 
@@ -230,11 +230,12 @@ def predict(
     for example_i, (positions, particle_type, n_particles_per_example) in enumerate(ds):
       positions.to(device)
       particle_type.to(device)
+      n_particles_per_example = torch.tensor([int(n_particles_per_example)], dtype=torch.int32).to(device)
 
       nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
       # Predict example rollout
-      example_rollout, loss = rollout(simulator, positions, particle_type,
-                                      n_particles_per_example, nsteps, device)
+      example_rollout, loss = rollout(simulator, positions.to(device), particle_type.to(device),
+                                      n_particles_per_example.to(device), nsteps, device)
 
       example_rollout['metadata'] = metadata
       print("Predicting example {} loss: {}".format(example_i, loss.mean()))
@@ -323,59 +324,62 @@ def train(
                                             )
 
   print(f"device = {device}")
+  not_reached_nsteps = True
   try:
-    for ((position, particle_type, n_particles_per_example), labels) in ds:
-      position.to(device)
-      particle_type.to(device)
-      n_particles_per_example.to(device)
-      labels.to(device)
+    while not_reached_nsteps:
+      for ((position, particle_type, n_particles_per_example), labels) in ds:
+        position.to(device)
+        particle_type.to(device)
+        n_particles_per_example.to(device)
+        labels.to(device)
 
-      # TODO (jpv): Move noise addition to data_loader
-      # Sample the noise to add to the inputs to the model during training.
-      sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(position, noise_std_last_step=FLAGS.noise_std).to(device)
-      non_kinematic_mask = (particle_type != KINEMATIC_PARTICLE_ID).clone().detach().to(device)
-      sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
+        # TODO (jpv): Move noise addition to data_loader
+        # Sample the noise to add to the inputs to the model during training.
+        sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(position, noise_std_last_step=FLAGS.noise_std).to(device)
+        non_kinematic_mask = (particle_type != KINEMATIC_PARTICLE_ID).clone().detach().to(device)
+        sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
 
-      # Get the predictions and target accelerations.
-      pred_acc, target_acc = simulator.predict_accelerations(
-          next_positions=labels,
-          position_sequence_noise=sampled_noise,
-          position_sequence=position,
-          nparticles_per_example=n_particles_per_example,
-          particle_types=particle_type)
+        # Get the predictions and target accelerations.
+        pred_acc, target_acc = simulator.predict_accelerations(
+            next_positions=labels.to(device),
+            position_sequence_noise=sampled_noise.to(device),
+            position_sequence=position.to(device),
+            nparticles_per_example=n_particles_per_example.to(device),
+            particle_types=particle_type.to(device))
 
-      # Calculate the loss and mask out loss on kinematic particles
-      loss = (pred_acc - target_acc) ** 2
-      loss = loss.sum(dim=-1)
-      num_non_kinematic = non_kinematic_mask.sum()
-      loss = torch.where(non_kinematic_mask.bool(),
+        # Calculate the loss and mask out loss on kinematic particles
+        loss = (pred_acc - target_acc) ** 2
+        loss = loss.sum(dim=-1)
+        num_non_kinematic = non_kinematic_mask.sum()
+        loss = torch.where(non_kinematic_mask.bool(),
                          loss, torch.zeros_like(loss))
-      loss = loss.sum() / num_non_kinematic
+        loss = loss.sum() / num_non_kinematic
 
-      # Computes the gradient of loss
-      optimizer.zero_grad()
-      loss.backward()
-      optimizer.step()
+        # Computes the gradient of loss
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-      # Update learning rate
-      lr_new = FLAGS.lr_init * (FLAGS.lr_decay ** (step/FLAGS.lr_decay_steps))
-      for param in optimizer.param_groups:
-        param['lr'] = lr_new
+        # Update learning rate
+        lr_new = FLAGS.lr_init * (FLAGS.lr_decay ** (step/FLAGS.lr_decay_steps))
+        for param in optimizer.param_groups:
+          param['lr'] = lr_new
 
-      print('Training step: {}/{}. Loss: {}.'.format(step,
-                                                     FLAGS.ntraining_steps,
+        print('Training step: {}/{}. Loss: {}.'.format(step,
+                                                       FLAGS.ntraining_steps,
                                                      loss))
-      # Save model state
-      if step % FLAGS.nsave_steps == 0:
-        simulator.save(model_path + 'model-'+str(step)+'.pt')
-        train_state = dict(optimizer_state=optimizer.state_dict(), global_train_state={"step":step})
-        torch.save(train_state, f"{model_path}train_state-{step}.pt")
+        # Save model state
+        if step % FLAGS.nsave_steps == 0:
+          simulator.save(model_path + 'model-'+str(step)+'.pt')
+          train_state = dict(optimizer_state=optimizer.state_dict(), global_train_state={"step":step})
+          torch.save(train_state, f"{model_path}train_state-{step}.pt")
 
-      # Complete training
-      if (step >= FLAGS.ntraining_steps):
-        break
+        # Complete training
+        if (step >= FLAGS.ntraining_steps):
+          not_reached_nsteps = False
+          break
 
-      step += 1
+        step += 1
 
   except KeyboardInterrupt:
     pass

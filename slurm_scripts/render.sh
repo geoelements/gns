@@ -18,7 +18,7 @@ cd ..
 source start_venv.sh
 
 # assume data is already downloaded and hardcode WaterDropSample
-data="SandRamps"
+data="mpm1to1"
 python3 -m gns.render_rollout \
 --rollout_path="${SCRATCH}/gns_pytorch/${data}/rollouts/rollout_0.pkl"
 
