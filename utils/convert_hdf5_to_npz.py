@@ -2,6 +2,7 @@ import argparse
 import pathlib
 import glob
 import re
+from turtle import pos
 
 import h5py
 import numpy as np
@@ -11,6 +12,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Convert hdf5 trajectories to npz.')
     parser.add_argument('--path', nargs="+", help="Path(s) to hdf5 files to consume.")
     parser.add_argument('--ndim', default=2, help="Dimension of input data, default is 2 (i.e., 2D).")
+    parser.add_argument('--dt', default=2E-4, help="Time step between position states.")
     parser.add_argument('--output', help="Name of the output file.")
     args = parser.parse_args()
 
@@ -23,7 +25,8 @@ if __name__ == "__main__":
 
     # setup up variables to calculate on-line mean and standard deviation
     # for velocity and acceleration.
-    if int(args.ndim) == 2:
+    ndim = int(args.ndim)
+    if ndim == 2:
         running_sum = dict(velocity_x=0, velocity_y=0, acceleration_x=0, acceleration_y=0)
         running_diff = dict(velocity_x=0, velocity_y=0, acceleration_x=0, acceleration_y=0)
         running_count = dict(velocity_x=0, velocity_y=0, acceleration_x=0, acceleration_y=0)
@@ -40,7 +43,6 @@ if __name__ == "__main__":
         # get size of trajectory
         with h5py.File(fnames[0], "r") as f:
             (nparticles,) = f["table"]["coord_x"].shape
-        ndim = int(args.ndim)
         nsteps = len(fnames)
 
         # allocate memory for trajectory
@@ -53,16 +55,36 @@ if __name__ == "__main__":
             with h5py.File(fname, "r") as f:
                 positions[nth_step, :, 0] = f["table"]["coord_x"][:]
                 positions[nth_step, :, 1] = f["table"]["coord_y"][:]
-                
-                velocity      
-                if ndim != 2:
-                    raise NotImplementedError
+        
+        dt = float(args.dt)
+        # compute velocities using finite difference
+        # assume velocities before zero are equal to zero
+        velocities = np.empty_like(positions)
+        velocities[1:] = (positions[1:] - positions[:-1])/dt
+        velocities[0] = 0
 
-                # update variables for on-line mean and standard deviation calculation.
-                for key in running_sum:
-                    running_sum[key] += np.sum(f["table"][key])
-                    running_diff[key] += np.sum(f["table"][key] - np.mean(f["table"][key]))
-                    running_count[key] += np.size(f["table"][key])
+        # compute accelerations finite difference
+        # assume accelerations before zero are equal to zero
+        accelerations = np.empty_like(velocities)
+        accelerations[1:] = (velocities[1:] - velocities[:-1])/dt
+        accelerations[0] = 0
+
+        # update variables for on-line mean and standard deviation calculation.
+        for key in running_sum:
+            if key == "velocity_x":
+                data = velocities[:,:,0]
+            elif key == "velocity_y":
+                data = velocities[:,:,1]
+            elif key == "acceleration_x":
+                data = accelerations[:,:,0]
+            elif key == "acceleration_y":
+                data = accelerations[:,:,1]
+            else:
+                raise KeyError
+
+            running_sum[key] += np.sum(data)
+            running_diff[key] += np.sum(data - np.mean(data))
+            running_count[key] += np.size(data)
 
         trajectories[str(directory.parent)] = (positions, np.full(positions.shape[1], 6, dtype=int))
 
