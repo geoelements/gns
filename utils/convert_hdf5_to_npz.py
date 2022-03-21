@@ -1,5 +1,4 @@
 import argparse
-from msilib.schema import Directory
 import pathlib
 import glob
 import re
@@ -18,7 +17,7 @@ if __name__ == "__main__":
     directories = [pathlib.Path(path) for path in args.path]
 
     for directory in directories:
-        if not directory.exits():
+        if not directory.exists():
             raise FileExistsError(f"The path {directory} does not exist.")
     print(f"Number of trajectories: {len(directories)}")
 
@@ -33,14 +32,15 @@ if __name__ == "__main__":
 
     trajectories = {}
     for nth_trajectory, directory in enumerate(directories):
-        fnames = glob.glob("*.h5")
-        get_fnumber = re.compile(".*(\d+).hdf5")
+        fnames = glob.glob(f"{str(directory)}/*.h5")
+        get_fnumber = re.compile(".*(\d+).h5")
         fnumber_and_fname = [(int(get_fnumber.findall(fname)[0]), fname) for fname in fnames]
         fnumber_and_fname_sorted = sorted(fnumber_and_fname, key=lambda row: row[0])
 
         # get size of trajectory
         with h5py.File(fnames[0], "r") as f:
-            nparticles, ndim = f["table"]["coord_x"].shape
+            (nparticles,) = f["table"]["coord_x"].shape
+        ndim = int(args.ndim)
         nsteps = len(fnames)
 
         # allocate memory for trajectory
@@ -53,6 +53,10 @@ if __name__ == "__main__":
             with h5py.File(fname, "r") as f:
                 positions[nth_step, :, 0] = f["table"]["coord_x"][:]
                 positions[nth_step, :, 1] = f["table"]["coord_y"][:]
+                
+                velocity      
+                if ndim != 2:
+                    raise NotImplementedError
 
                 # update variables for on-line mean and standard deviation calculation.
                 for key in running_sum:
