@@ -35,10 +35,10 @@ if __name__ == "__main__":
     trajectories = {}
     for nth_trajectory, directory in enumerate(directories):
         fnames = glob.glob(f"{str(directory)}/*.h5")
-        get_fnumber = re.compile(".*(\d+).h5")
+        get_fnumber = re.compile(".*\D(\d+).h5")
         fnumber_and_fname = [(int(get_fnumber.findall(fname)[0]), fname) for fname in fnames]
         fnumber_and_fname_sorted = sorted(fnumber_and_fname, key=lambda row: row[0])
-
+        
         # get size of trajectory
         with h5py.File(fnames[0], "r") as f:
             (nparticles,) = f["table"]["coord_x"].shape
@@ -50,7 +50,7 @@ if __name__ == "__main__":
         print(f"Size of trajectory {nth_trajectory} ({directory}): {positions.shape}")
 
         # open each file and copy data to positions tensor.
-        for nth_step, fname in enumerate(fnames):
+        for nth_step, (_, fname) in enumerate(fnumber_and_fname_sorted):
             with h5py.File(fname, "r") as f:
                 positions[nth_step, :, 0] = f["table"]["coord_x"][:]
                 positions[nth_step, :, 1] = f["table"]["coord_y"][:]
