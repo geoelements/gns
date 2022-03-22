@@ -2,7 +2,6 @@ import argparse
 import pathlib
 import glob
 import re
-from turtle import pos
 
 import h5py
 import numpy as np
@@ -28,7 +27,7 @@ if __name__ == "__main__":
     ndim = int(args.ndim)
     if ndim == 2:
         running_sum = dict(velocity_x=0, velocity_y=0, acceleration_x=0, acceleration_y=0)
-        running_diff = dict(velocity_x=0, velocity_y=0, acceleration_x=0, acceleration_y=0)
+        running_sumsq = dict(velocity_x=0, velocity_y=0, acceleration_x=0, acceleration_y=0)
         running_count = dict(velocity_x=0, velocity_y=0, acceleration_x=0, acceleration_y=0)
     else:
         raise NotImplementedError
@@ -48,7 +47,7 @@ if __name__ == "__main__":
         # allocate memory for trajectory
         # assume number of particles does not change along the rollout.
         positions = np.empty((nsteps, nparticles, ndim), dtype=float)
-        print(f"Size of trajectory {nth_trajectory} ({directory.parent}): {positions.shape}")
+        print(f"Size of trajectory {nth_trajectory} ({directory}): {positions.shape}")
 
         # open each file and copy data to positions tensor.
         for nth_step, fname in enumerate(fnames):
@@ -83,16 +82,16 @@ if __name__ == "__main__":
                 raise KeyError
 
             running_sum[key] += np.sum(data)
-            running_diff[key] += np.sum(data - np.mean(data))
+            running_sumsq[key] += np.sum(data**2)
             running_count[key] += np.size(data)
 
-        trajectories[str(directory.parent)] = (positions, np.full(positions.shape[1], 6, dtype=int))
+        trajectories[str(directory)] = (positions, np.full(positions.shape[1], 6, dtype=int))
 
     # compute online mean and standard deviation.
     print("Statistis across all trajectories:")
     for key in running_sum:
         mean = running_sum[key] / running_count[key]
-        std = np.sqrt(running_diff[key]**2 / running_count[key])
+        std = np.sqrt((running_sumsq[key] - running_sum[key]**2/running_count[key]) / (running_count[key] - 1))
         print(f"  {key}: mean={mean:.4f}, std={std:.4f}")
 
     np.savez_compressed(args.output, **trajectories)
