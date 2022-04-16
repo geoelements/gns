@@ -404,8 +404,6 @@ def train(
 
       # %% yc: update loss calculation
 
-      predicted_positions = []
-      target_positions = []
       # yc: Get the predictions and target positions.
       # yc: doesn't need noise
       # TODO: # yc: need to know how `features['position']` looks like.
