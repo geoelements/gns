@@ -429,7 +429,7 @@ def train(
       # centroid loss is calcuated as follows
       # (\sum_{i}^nparticles predicted_positions^2)/nparticles
       #   - (\sum_{i}^nparticles predicted_positions^2)/nparticles
-      centroid_loss = predicted_positions**2 - target_positions**2
+      centroid_loss = torch.abs(predicted_positions**2 - target_positions**2)
       centroid_loss = centroid_loss.sum(dim=-1)
       centroid_loss = torch.where(non_kinematic_mask.bool(),
                                   centroid_loss, torch.zeros_like(centroid_loss))
