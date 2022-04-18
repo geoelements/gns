@@ -394,19 +394,7 @@ def train(
           features['particle_type'] != 3).clone().detach().to(device)
       sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
 
-      # Get the predictions and target accelerations.
-      pred_acc, target_acc = simulator.predict_accelerations(
-          next_positions=labels.to(device),
-          position_sequence_noise=sampled_noise.to(device),
-          position_sequence=features['position'].to(device),
-          nparticles_per_example=features['n_particles_per_example'].to(device),
-          particle_types=features['particle_type'].to(device))
-
-      # %% yc: update loss calculation
-
-      # yc: Get the predictions and target positions.
-      # yc: doesn't need noise
-      # TODO: # yc: need to know how `features['position']` looks like.
+      # Get the predictions and target positions.
       predicted_positions = simulator.predict_positions(  # (nparticle, dim)
           current_positions=features['position'].to(device),
           nparticles_per_example=features['n_particles_per_example'].to(device),
@@ -439,7 +427,6 @@ def train(
       optimizer.zero_grad()
       loss.backward()
       optimizer.step()
-#%%
 
       # Update learning rate
       lr_new = FLAGS.lr_init * (FLAGS.lr_decay ** (step/FLAGS.lr_decay_steps))
