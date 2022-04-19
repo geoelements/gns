@@ -342,7 +342,7 @@ class LearnedSimulator(nn.Module):
     Args:
       path: Model path
     """
-    self.load_state_dict(torch.load(path))
+    self.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
 
 
 def time_diff(

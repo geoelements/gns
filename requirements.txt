@@ -1,7 +1,5 @@
 absl-py
 autopep8
-tensorflow
-tensorflow-datasets
 numpy
 dm-tree
 matplotlib
