@@ -34,8 +34,6 @@ python3 -m gns.train --mode='rollout' --data_path='${WORK_DIR}/datasets/${DATASE
 
 ## Datasets
 
-Datasets are available to [download](https://utexas.app.box.com/s/awryzbj5oexa18f5njcnw7zr7uf4w80q)
-
 The data loader provided with this PyTorch implementation utilizes the more general `.npz` format. The `.npz` format includes a list of
 tuples of arbitrary length where each tuple is for a different training trajectory
 and is of the form `(position, particle_type)`. `position` is a 3-D tensor of
@@ -52,6 +50,8 @@ We provide the following datasets:
   * `WaterDropSample` (smallest dataset)
   * `Sand`
   * `SandRamps`
+
+Download the dataset from [UT Box](https://utexas.app.box.com/s/awryzbj5oexa18f5njcnw7zr7uf4w80q)
 
 
 ## Building environment on TACC LS6 and Frontera
