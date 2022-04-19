@@ -34,56 +34,25 @@ python3 -m gns.train --mode='rollout' --data_path='${WORK_DIR}/datasets/${DATASE
 
 ## Datasets
 
-Datasets are available to download via:
+Datasets are available to [download](https://utexas.app.box.com/s/awryzbj5oexa18f5njcnw7zr7uf4w80q)
+
+The data loader provided with this PyTorch implementation utilizes the more general `.npz` format. The `.npz` format includes a list of
+tuples of arbitrary length where each tuple is for a different training trajectory
+and is of the form `(position, particle_type)`. `position` is a 3-D tensor of
+shape `(n_time_steps, n_particles, n_dimensions)` and `particle_type` is
+a 1-D tensor of shape `(n_particles)`.  
+
+The dataset contains:
 
 * Metadata file with dataset information (sequence length, dimensionality, box bounds, default connectivity radius, statistics for normalization, ...):
 
-  `https://storage.googleapis.com/learning-to-simulate-complex-physics/Datasets/{DATASET_NAME}/metadata.json`
+* npz containing data for all trajectories (particle types, positions, global context, ...):
 
-* TFRecords containing data for all trajectories (particle types, positions, global context, ...):
-
-  `https://storage.googleapis.com/learning-to-simulate-complex-physics/Datasets/{DATASET_NAME}/{DATASET_SPLIT}.tfrecord`
-
-Where:
-
-* `{DATASET_SPLIT}` is one of:
-  * `train`
-  * `valid`
-  * `test`
-
-* `{DATASET_NAME}` one of the datasets following the naming used in the paper:
-  * `WaterDrop`
-  * `Water`
+We provide the following datasets:
+  * `WaterDropSample` (smallest dataset)
   * `Sand`
-  * `Goop`
-  * `MultiMaterial`
-  * `RandomFloor`
-  * `WaterRamps`
   * `SandRamps`
-  * `FluidShake`
-  * `FluidShakeBox`
-  * `Continuous`
-  * `WaterDrop-XL`
-  * `Water-3D`
-  * `Sand-3D`
-  * `Goop-3D`
 
-The provided script `./download_dataset.sh` may be used to download all files from each dataset into a folder given its name.
-
-An additional smaller dataset `${DATASET_NAME}`, which includes only the first two trajectories of `WaterDrop` for each split, is provided for debugging purposes.
-
-### Download dataset (e.g., Sand)
-
-
-```shell
-    export DATASET_NAME="Sand"
-    # local
-    mkdir -p /tmp/datasets
-    sh ./download_dataset.sh ${DATASET_NAME} /tmp/datasets
-    
-    # on frontera
-    sh ./download_dataset.sh ${DATASET_NAME} ${SCRATCH}/gns
-```
 
 ## Building environment on TACC LS6 and Frontera
 
@@ -100,12 +69,3 @@ sh ./build_venv.sh
 source start_venv.sh 
 ```
 
-## PyTorch Data Loader
-
-The data loader provided with this PyTorch implementation of DeepMind's Graph
-Network Simulator no longer uses the `.tfrecord` format aforementioned. Instead,
-it utilizes the more general `.npz` format. The `.npz` format includes a list of
-tuples of arbitrary length where each tuple is for a different training trajectory
-and is of the form `(position, particle_type)`. `position` is a 3-D tensor of
-shape `(n_time_steps, n_particles, n_dimensions)` and `particle_type` is
-a 1-D tensor of shape `(n_particles)`.  
