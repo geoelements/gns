@@ -43,7 +43,8 @@ flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps
 flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
 
 # yc:
-flags.DEFINE_string('loss_mode', None, help="Choose between 'acceleration' or 'position'")
+flags.DEFINE_string('loss_mode', 'accel', help="Options for loss functions: 'acceleration' or 'position'")
+flags.DEFINE_float('alpha', 0.5, help='Weight value for positional loss')
 
 FLAGS = flags.FLAGS
 
@@ -399,18 +400,36 @@ def train(
           features['particle_type'] != 3).clone().detach().to(device)
       sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
 
+      # Calculate the loss and mask out loss on kinematic particles.
+      # This loss is based on acceleration.
+      if FLAGS.loss_mode == 'accel':
       # Get the predictions and target positions.
-      predicted_positions = simulator.predict_positions(  # (nparticle, dim)
-          current_positions=features['position'].to(device),
-          nparticles_per_example=features['n_particles_per_example'].to(device),
-          particle_types=features['particle_type'].to(device))
-      target_positions = labels.to(device)
+          pred_acc, target_acc = simulator.predict_accelerations(
+              next_positions=labels.to(device),
+              position_sequence_noise=sampled_noise.to(device),
+              position_sequence=features['position'].to(device),
+              nparticles_per_example=features['n_particles_per_example'].to(device),
+              particle_types=features['particle_type'].to(device))
 
-      # Calculate the loss and mask out loss on kinematic particles
-      # The loss is weighted average of "individual point loss" and "centroid loss", or
-      # acceleration-based one.
+          # Calculate the loss and mask out loss on kinematic particles
+          loss = (pred_acc - target_acc) ** 2
+          loss = loss.sum(dim=-1)
+          num_non_kinematic = non_kinematic_mask.sum()
+          loss = torch.where(non_kinematic_mask.bool(),
+                             loss, torch.zeros_like(loss))
+          loss = loss.sum() / num_non_kinematic
+
+      # This loss is based on position using weighted average of "individual position loss" and "centroid loss".
       if FLAGS.loss_mode == 'position':
-          weight = 0.2
+          # get predicted and target positions
+          predicted_positions = simulator.predict_positions(  # (nparticle, dim)
+              current_positions=features['position'].to(device),
+              nparticles_per_example=features['n_particles_per_example'].to(device),
+              particle_types=features['particle_type'].to(device))
+          target_positions = labels.to(device)
+
+          # Weight
+          weight = FLAGS.alpha
           # Individual point loss is calculated as follows
           # (\sum_{i}^nparticles (predicted_positions - target_positions)^2)/nparticles
           individual_point_loss = (predicted_positions - target_positions)**2
@@ -429,23 +448,6 @@ def train(
                                       centroid_loss, torch.zeros_like(centroid_loss))
           centroid_loss = centroid_loss.sum() / num_non_kinematic
           loss = (1-weight)*individual_point_loss + weight*centroid_loss
-
-      elif FLAGS.loss_mode == 'acceleration':
-      # Get the predictions and target accelerations.
-          pred_acc, target_acc = simulator.predict_accelerations(
-              next_positions=labels.to(device),
-              position_sequence_noise=sampled_noise.to(device),
-              position_sequence=position.to(device),
-              nparticles_per_example=n_particles_per_example.to(device),
-              particle_types=particle_type.to(device))
-
-          # Calculate the loss and mask out loss on kinematic particles
-          loss = (pred_acc - target_acc) ** 2
-          loss = loss.sum(dim=-1)
-          num_non_kinematic = non_kinematic_mask.sum()
-          loss = torch.where(non_kinematic_mask.bool(),
-                             loss, torch.zeros_like(loss))
-          loss = loss.sum() / num_non_kinematic
 
       # Computes the gradient of loss
       optimizer.zero_grad()
