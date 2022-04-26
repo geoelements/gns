@@ -43,7 +43,7 @@ flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps
 flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
 
 # Loss parameters
-flags.DEFINE_string('loss_mode', 'accel', help="Options for loss functions: 'acceleration' or 'position'")
+flags.DEFINE_string('loss_mode', 'acceleration', help="Options for loss functions: 'acceleration' or 'position'")
 flags.DEFINE_float('alpha', 0.5, help='Weight value for positional loss')
 
 FLAGS = flags.FLAGS
@@ -402,7 +402,7 @@ def train(
 
       # Calculate the loss and mask out loss on kinematic particles.
       # This loss is based on acceleration.
-      if FLAGS.loss_mode == 'accel':
+      if FLAGS.loss_mode == 'acceleration':
       # Get the predictions and target positions.
           pred_acc, target_acc = simulator.predict_accelerations(
               next_positions=labels.to(device),
