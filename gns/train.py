@@ -39,8 +39,8 @@ flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps
 
 flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
 
-# yc:
-flags.DEFINE_string('loss_mode', 'accel', help="Options for loss functions: 'acceleration' or 'position'")
+# Loss parameters
+flags.DEFINE_string('loss_mode', 'acceleration', help="Options for loss functions: 'acceleration' or 'position'")
 flags.DEFINE_float('alpha', 0.5, help='Weight value for positional loss')
 
 FLAGS = flags.FLAGS
