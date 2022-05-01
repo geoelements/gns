@@ -3,7 +3,8 @@
 # Temporary files
 *~*
 *#*
-
+.DS_store
+*.swp
 scratch
 log
 

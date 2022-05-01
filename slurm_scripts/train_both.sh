@@ -19,19 +19,24 @@ cd ..
 source start_venv.sh
 
 # assume data is already downloaded
-data="Sand"
-python3 -m gns.train --data_path="${SCRATCH}/gns_pytorch/${data}/dataset" \
+data="mpm-columns"
+python3 -m gns.train --data_path="${SCRATCH}/gns_pytorch/${data}/dataset/" \
 --model_path="${SCRATCH}/gns_pytorch/${data}/models/" \
 --output_path="${SCRATCH}/gns_pytorch/${data}/rollouts/" \
---model_file="latest" \
---train_state_file="latest" \
+--ntraining_steps=1000000 \
 --cuda_device_number=0 &
+#--model_file="latest" \
+#--train_state_file="latest" \
+#--cuda_device_number=0 &
 
-data="SandRamps"
-python3 -m gns.train --data_path="${SCRATCH}/gns_pytorch/${data}/dataset" \
+
+data="WaterDropSamplePytorch"
+python3 -m gns.train --data_path="${SCRATCH}/gns_pytorch/${data}/dataset/" \
 --model_path="${SCRATCH}/gns_pytorch/${data}/models/" \
 --output_path="${SCRATCH}/gns_pytorch/${data}/rollouts/" \
---model_file="latest" \
---train_state_file="latest" \
+--ntraining_steps=1000000 \
 --cuda_device_number=1
+#--model_file="latest" \
+#--train_state_file="latest" \
+#--cuda_device_number=1
 

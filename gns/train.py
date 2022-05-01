@@ -1,5 +1,4 @@
 import collections
-import functools
 import json
 import numpy as np
 import os
@@ -8,18 +7,16 @@ import pickle
 import glob
 import re
 
-import tensorflow as tf
-import tensorflow_datasets as tfds
 import tree
 
 from absl import flags
-from absl import logging
 from absl import app
 
 
 from gns import learned_simulator
 from gns import noise_utils
 from gns import reading_utils
+from gns import data_loader
 
 flags.DEFINE_enum(
     'mode', 'train', ['train', 'valid', 'rollout'],
@@ -54,151 +51,13 @@ INPUT_SEQUENCE_LENGTH = 6  # So we can calculate the last 5 velocities.
 NUM_PARTICLE_TYPES = 9
 KINEMATIC_PARTICLE_ID = 3
 
-
-def prepare_inputs(tensor_dict):
-  """Prepares a single stack of inputs by calculating inputs and targets.
-
-  Computes n_particles_per_example, which is a tensor that contains information
-  about how to partition the axis - i.e. which nodes belong to which graph.
-
-  Adds a batch axis to `n_particles_per_example` and `step_context` so they can
-  later be batched using `batch_concat`. This batch will be the same as if the
-  elements had been batched via stacking.
-
-  Note that all other tensors have a variable size particle axis,
-  and in this case they will simply be concatenated along that
-  axis.
-
-  Args:
-    tensor_dict: A dict of tensors containing positions, and step context (
-    if available).
-
-  Returns:
-    A tuple of input features and target positions.
-
-  """
-  # Position is encoded as [sequence_length, num_particles, dim] but the model
-  # expects [num_particles, sequence_length, dim].
-  pos = tensor_dict['position']
-  pos = tf.transpose(pos, perm=[1, 0, 2])
-
-  # The target position is the final step of the stack of positions.
-  target_position = pos[:, -1]
-
-  # Remove the target from the input.
-  tensor_dict['position'] = pos[:, :-1]
-
-  # Compute the number of particles per example.
-  nparticles = tf.shape(pos)[0]
-  # Add an extra dimension for stacking via concat.
-  tensor_dict['n_particles_per_example'] = nparticles[tf.newaxis]
-
-  if 'step_context' in tensor_dict:
-    # Take the input global context. We have a stack of global contexts,
-    # and we take the penultimate since the final is the target.
-    tensor_dict['step_context'] = tensor_dict['step_context'][-2]
-    # Add an extra dimension for stacking via concat.
-    tensor_dict['step_context'] = tensor_dict['step_context'][tf.newaxis]
-  return tensor_dict, target_position
-
-
-def prepare_rollout_inputs(context, features):
-  """Prepares an inputs trajectory for rollout."""
-  out_dict = {**context}
-  # Position is encoded as [sequence_length, nparticles, dim] but the model
-  # expects [nparticles, sequence_length, dim].
-  pos = tf.transpose(features['position'], [1, 0, 2])
-  # The target position is the final step of the stack of positions.
-  target_position = pos[:, -1]
-  # Remove the target from the input.
-  out_dict['position'] = pos[:, :-1]
-  # Compute the number of nodes
-  out_dict['n_particles_per_example'] = [tf.shape(pos)[0]]
-  if 'step_context' in features:
-    out_dict['step_context'] = features['step_context']
-  out_dict['is_trajectory'] = tf.constant([True], tf.bool)
-  return out_dict, target_position
-
-
-def batch_concat(dataset, batch_size):
-  """We implement batching as concatenating on the leading axis."""
-
-  # We create a dataset of datasets of length batch_size.
-  windowed_ds = dataset.window(batch_size)
-
-  # The plan is then to reduce every nested dataset by concatenating. We can
-  # do this using tf.data.Dataset.reduce. This requires an initial state, and
-  # then incrementally reduces by running through the dataset
-
-  # Get initial state. In this case this will be empty tensors of the
-  # correct shape.
-  initial_state = tree.map_structure(
-      lambda spec: tf.zeros(  # pylint: disable=g-long-lambda
-          shape=[0] + spec.shape.as_list()[1:], dtype=spec.dtype),
-      dataset.element_spec)
-
-  # We run through the nest and concatenate each entry with the previous state.
-  def reduce_window(initial_state, ds):
-    return ds.reduce(initial_state, lambda x, y: tf.concat([x, y], axis=0))
-
-  return windowed_ds.map(
-      lambda *x: tree.map_structure(reduce_window, initial_state, x))
-
-
-def prepare_input_data(
-        data_path: str,
-        batch_size: int = 2,
-        mode: str = 'train',
-        split: str = 'train'):
-  """Prepares the input data for learning simulation from tfrecord.
-
-  Args:
-    data_path: the path to the dataset directory.
-    batch_size: the number of graphs in a batch.
-    mode: either 'train' or 'rollout'
-    split: either 'train', 'valid' or 'test'.
-
-  Returns:
-    The input data for the learning simulation model.
-  """
-  # Loads the metadata of the dataset.
-  metadata = reading_utils.read_metadata(data_path)
-  # Set CPU as the only available physical device
-  tf.config.set_visible_devices([], 'GPU')
-
-  # Create a tf.data.Dataset from the TFRecord.
-  ds = tf.data.TFRecordDataset([os.path.join(data_path, f'{split}.tfrecord')])
-  ds = ds.map(functools.partial(
-      reading_utils.parse_serialized_simulation_example, metadata=metadata))
-
-  if mode == 'rollout':
-    ds = ds.map(prepare_rollout_inputs)
-  elif mode == 'train':
-    # Splits an entire trajectory into chunks of 7 steps.
-    # Previous 5 velocities, current velocity and target.
-    split_with_window = functools.partial(
-        reading_utils.split_trajectory,
-        window_length=INPUT_SEQUENCE_LENGTH + 1)
-    ds = ds.flat_map(split_with_window)
-    # Splits a chunk into input steps and target steps
-    ds = ds.map(prepare_inputs)
-    # If in train mode, repeat dataset forever and shuffle.
-    ds = ds.repeat()
-    ds = ds.shuffle(512)
-    # Custom batching on the leading axis.
-    ds = batch_concat(ds, batch_size)
-
-  # Convert to numpy
-  ds = tfds.as_numpy(ds)
-
-  return ds
-
-
 def rollout(
         simulator: learned_simulator.LearnedSimulator,
-        features: torch.tensor,
+        position: torch.tensor,
+        particle_types: torch.tensor,
+        n_particles_per_example: torch.tensor,
         nsteps: int,
-        device: str):
+        device):
   """Rolls out a trajectory by applying the model in sequence.
 
   Args:
@@ -206,8 +65,8 @@ def rollout(
     features: Torch tensor features.
     nsteps: Number of steps.
   """
-  initial_positions = features['position'][:, 0:INPUT_SEQUENCE_LENGTH]
-  ground_truth_positions = features['position'][:, INPUT_SEQUENCE_LENGTH:]
+  initial_positions = position[:, :INPUT_SEQUENCE_LENGTH]
+  ground_truth_positions = position[:, INPUT_SEQUENCE_LENGTH:]
 
   current_positions = initial_positions
   predictions = []
@@ -216,13 +75,12 @@ def rollout(
     # Get next position with shape (nnodes, dim)
     next_position = simulator.predict_positions(
         current_positions,
-        nparticles_per_example=features['n_particles_per_example'],
-        particle_types=features['particle_type'],
+        nparticles_per_example=[n_particles_per_example],
+        particle_types=particle_types,
     )
 
     # Update kinematic particles from prescribed trajectory.
-    kinematic_mask = (features['particle_type'] ==
-                      3).clone().detach().to(device)
+    kinematic_mask = (particle_types == KINEMATIC_PARTICLE_ID).clone().detach().to(device)
     next_position_ground_truth = ground_truth_positions[:, step]
     kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, 2)
     next_position = torch.where(
@@ -244,7 +102,7 @@ def rollout(
       'initial_positions': initial_positions.permute(1, 0, 2).cpu().numpy(),
       'predicted_rollout': predictions.cpu().numpy(),
       'ground_truth_rollout': ground_truth_positions.cpu().numpy(),
-      'particle_types': features['particle_type'].cpu().numpy(),
+      'particle_types': particle_types.cpu().numpy(),
   }
 
   return output_dict, loss
@@ -266,7 +124,10 @@ def predict(
   if os.path.exists(FLAGS.model_path + FLAGS.model_file):
     simulator.load(FLAGS.model_path + FLAGS.model_file)
   else:
-    train(simulator, device)
+    train(simulator)
+  
+  simulator.to(device)
+  simulator.eval()
 
   # Output path
   if not os.path.exists(FLAGS.output_path):
@@ -274,27 +135,20 @@ def predict(
 
   # Use `valid`` set for eval mode if not use `test`
   split = 'test' if FLAGS.mode == 'rollout' else 'valid'
-  ds = prepare_input_data(FLAGS.data_path,
-                          batch_size=FLAGS.batch_size,
-                          mode='rollout', split=split)
 
-  # Move model to device
-  simulator.to(device)
+  ds = data_loader.get_data_loader_by_trajectories(path=f"{FLAGS.data_path}{split}.npz")
 
   eval_loss = []
   with torch.no_grad():
-    for example_i, (features, labels) in enumerate(ds):
-      features['position'] = torch.tensor(
-          features['position']).to(device)
-      features['n_particles_per_example'] = torch.tensor(
-          features['n_particles_per_example']).to(device)
-      features['particle_type'] = torch.tensor(
-          features['particle_type']).to(device)
-      labels = torch.tensor(labels).to(device)
+    for example_i, (positions, particle_type, n_particles_per_example) in enumerate(ds):
+      positions.to(device)
+      particle_type.to(device)
+      n_particles_per_example = torch.tensor([int(n_particles_per_example)], dtype=torch.int32).to(device)
 
       nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
       # Predict example rollout
-      example_rollout, loss = rollout(simulator, features, nsteps, device)
+      example_rollout, loss = rollout(simulator, positions.to(device), particle_type.to(device),
+                                      n_particles_per_example.to(device), nsteps, device)
 
       example_rollout['metadata'] = metadata
       print("Predicting example {} loss: {}".format(example_i, loss.mean()))
@@ -379,100 +233,67 @@ def train(
   simulator.train()
   simulator.to(device)
 
-  ds = prepare_input_data(FLAGS.data_path,
-                          batch_size=FLAGS.batch_size)
+  ds = data_loader.get_data_loader_by_samples(path=f"{FLAGS.data_path}train.npz",
+                                              input_length_sequence=INPUT_SEQUENCE_LENGTH,
+                                              batch_size=FLAGS.batch_size,
+                                            )
 
   print(f"device = {device}")
+  not_reached_nsteps = True
   try:
-    for features, labels in ds:
-      features['position'] = torch.tensor(
-          features['position']).to(device)
-      features['n_particles_per_example'] = torch.tensor(
-          features['n_particles_per_example']).to(device)
-      features['particle_type'] = torch.tensor(
-          features['particle_type']).to(device)
-      labels = torch.tensor(labels).to(device)
+    while not_reached_nsteps:  
+        position.to(device)
+        particle_type.to(device)
+        n_particles_per_example.to(device)
+        labels.to(device)
 
-      # Sample the noise to add to the inputs to the model during training.
-      sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(
-          features['position'], noise_std_last_step=FLAGS.noise_std).to(device)
-      non_kinematic_mask = (
-          features['particle_type'] != 3).clone().detach().to(device)
-      sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
+        # TODO (jpv): Move noise addition to data_loader
+        # Sample the noise to add to the inputs to the model during training.
+        sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(position, noise_std_last_step=FLAGS.noise_std).to(device)
+        non_kinematic_mask = (particle_type != KINEMATIC_PARTICLE_ID).clone().detach().to(device)
+        sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
 
-      # Calculate the loss and mask out loss on kinematic particles.
-      # This loss is based on acceleration.
-      if FLAGS.loss_mode == 'accel':
-      # Get the predictions and target positions.
-          pred_acc, target_acc = simulator.predict_accelerations(
-              next_positions=labels.to(device),
-              position_sequence_noise=sampled_noise.to(device),
-              position_sequence=features['position'].to(device),
-              nparticles_per_example=features['n_particles_per_example'].to(device),
-              particle_types=features['particle_type'].to(device))
+        # Get the predictions and target accelerations.
+        pred_acc, target_acc = simulator.predict_accelerations(
+            next_positions=labels.to(device),
+            position_sequence_noise=sampled_noise.to(device),
+            position_sequence=position.to(device),
+            nparticles_per_example=n_particles_per_example.to(device),
+            particle_types=particle_type.to(device))
 
-          # Calculate the loss and mask out loss on kinematic particles
-          loss = (pred_acc - target_acc) ** 2
-          loss = loss.sum(dim=-1)
-          num_non_kinematic = non_kinematic_mask.sum()
-          loss = torch.where(non_kinematic_mask.bool(),
-                             loss, torch.zeros_like(loss))
-          loss = loss.sum() / num_non_kinematic
+        # Calculate the loss and mask out loss on kinematic particles
+        loss = (pred_acc - target_acc) ** 2
+        loss = loss.sum(dim=-1)
+        num_non_kinematic = non_kinematic_mask.sum()
+        loss = torch.where(non_kinematic_mask.bool(),
+                         loss, torch.zeros_like(loss))
+        loss = loss.sum() / num_non_kinematic
 
-      # This loss is based on position using weighted average of "individual position loss" and "centroid loss".
-      if FLAGS.loss_mode == 'position':
-          # get predicted and target positions
-          predicted_positions = simulator.predict_positions(  # (nparticle, dim)
-              current_positions=features['position'].to(device),
-              nparticles_per_example=features['n_particles_per_example'].to(device),
-              particle_types=features['particle_type'].to(device))
-          target_positions = labels.to(device)
+        # Computes the gradient of loss
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-          # Weight
-          weight = FLAGS.alpha
-          # Individual point loss is calculated as follows
-          # (\sum_{i}^nparticles (predicted_positions - target_positions)^2)/nparticles
-          individual_point_loss = (predicted_positions - target_positions)**2
-          individual_point_loss = individual_point_loss.sum(dim=-1)
-          num_non_kinematic = non_kinematic_mask.sum()
-          individual_point_loss = torch.where(non_kinematic_mask.bool(),
-                                              individual_point_loss, torch.zeros_like(individual_point_loss))
-          individual_point_loss = individual_point_loss.sum() / num_non_kinematic
+        # Update learning rate
+        lr_new = FLAGS.lr_init * (FLAGS.lr_decay ** (step/FLAGS.lr_decay_steps))
+        for param in optimizer.param_groups:
+          param['lr'] = lr_new
 
-          # centroid loss is calcuated as follows
-          # (\sum_{i}^nparticles predicted_positions^2)/nparticles
-          #   - (\sum_{i}^nparticles predicted_positions^2)/nparticles
-          centroid_loss = torch.abs(predicted_positions**2 - target_positions**2)
-          centroid_loss = centroid_loss.sum(dim=-1)
-          centroid_loss = torch.where(non_kinematic_mask.bool(),
-                                      centroid_loss, torch.zeros_like(centroid_loss))
-          centroid_loss = centroid_loss.sum() / num_non_kinematic
-          loss = (1-weight)*individual_point_loss + weight*centroid_loss
-
-      # Computes the gradient of loss
-      optimizer.zero_grad()
-      loss.backward()
-      optimizer.step()
-
-      # Update learning rate
-      lr_new = FLAGS.lr_init * (FLAGS.lr_decay ** (step/FLAGS.lr_decay_steps))
-      for param in optimizer.param_groups:
-        param['lr'] = lr_new
-
-      print('Training step: {}/{}. Loss: {}.'.format(step,
-                                                     FLAGS.ntraining_steps,
+        print('Training step: {}/{}. Loss: {}.'.format(step,
+                                                       FLAGS.ntraining_steps,
                                                      loss))
-      # Save model state
-      if step % FLAGS.nsave_steps == 0:
-        simulator.save(model_path + 'model-'+str(step)+'.pt')
-        train_state = dict(optimizer_state=optimizer.state_dict(), global_train_state={"step":step})
-        torch.save(train_state, f"{model_path}train_state-{step}.pt")
+        # Save model state
+        if step % FLAGS.nsave_steps == 0:
+          simulator.save(model_path + 'model-'+str(step)+'.pt')
+          train_state = dict(optimizer_state=optimizer.state_dict(), global_train_state={"step":step})
+          torch.save(train_state, f"{model_path}train_state-{step}.pt")
 
-      # Complete training
-      if (step >= FLAGS.ntraining_steps):
-        break
+        # Complete training
+        if (step >= FLAGS.ntraining_steps):
+          not_reached_nsteps = False
+          break
 
-      step += 1
+        step += 1
 
   except KeyboardInterrupt:
     pass
@@ -539,8 +360,7 @@ def main(_):
 
   # Read metadata
   metadata = reading_utils.read_metadata(FLAGS.data_path)
-  simulator = _get_simulator(
-      metadata, FLAGS.noise_std, FLAGS.noise_std, device)
+  simulator = _get_simulator(metadata, FLAGS.noise_std, FLAGS.noise_std, device)
   if FLAGS.mode == 'train':
     train(simulator, device)
   elif FLAGS.mode in ['valid', 'rollout']:
