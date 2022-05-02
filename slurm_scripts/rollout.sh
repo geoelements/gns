@@ -22,6 +22,5 @@ data="mpm-columns"
 python3 -m gns.train --mode="rollout" \
 --data_path="${SCRATCH}/gns_pytorch/${data}/dataset/" \
 --model_path="${SCRATCH}/gns_pytorch/${data}/models/" \
---model_file="model-1000000.pt" \
+--model_file="model-5000000.pt" \
 --output_path="${SCRATCH}/gns_pytorch/${data}/rollouts/"
-
