@@ -16,11 +16,12 @@ set -e
 # start in slurm_scripts
 cd ..
 source start_venv.sh
+cd gns
 
 # assume data is already downloaded and hardcode WaterDropSample
 data="mpm-columns"
 SCRATCH=$WORK
-python3 -m gns.train --data_path="${SCRATCH}/gns_pytorch/${data}/dataset/" \
+torchrun train.py --data_path="${SCRATCH}/gns_pytorch/${data}/dataset/" \
 --model_path="${SCRATCH}/gns_pytorch/${data}/models/" \
 --output_path="${SCRATCH}/gns_pytorch/${data}/rollouts/" \
 --cuda_device_number=0 \
