@@ -209,12 +209,12 @@ def train(rank, flags, world_size):
 
     if os.path.exists(flags["model_path"] + flags["model_file"]) and os.path.exists(flags["model_path"] + flags["train_state_file"]):
       # load model
-      simulator.load(flags["model_path"] + flags["model_file"])
+      simulator.module.load(flags["model_path"] + flags["model_file"])
 
       # load train state
       train_state = torch.load(flags["model_path"] + flags["train_state_file"])
       # set optimizer state
-      optimizer = torch.optim.Adam(simulator.parameters())
+      optimizer = torch.optim.Adam(simulator.module.parameters())
       optimizer.load_state_dict(train_state["optimizer_state"])
       optimizer_to(optimizer, rank)
       # set global train state
