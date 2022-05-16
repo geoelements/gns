@@ -15,7 +15,7 @@ class SamplesDataset(torch.utils.data.Dataset):
         # length of each trajectory in the dataset
         # excluding the input_length_sequence
         # may (and likely is) variable between data
-        self._dimension = self._data[0].shape[-1]
+        self._dimension = self._data[0][0].shape[-1]
         self._input_length_sequence = input_length_sequence
         self._data_lengths = [x.shape[0] - self._input_length_sequence for x, _ in self._data]
         self._length = sum(self._data_lengths)
@@ -40,7 +40,7 @@ class SamplesDataset(torch.utils.data.Dataset):
 
         # Prepare training data.
         positions = self._data[trajectory_idx][0][time_idx - self._input_length_sequence:time_idx]
-        positions = np.transpose(positions, (1, 0, self._dimension)) # nparticles, input_sequence_length, dimension
+        positions = np.transpose(positions, (1, 0, 2)) # nparticles, input_sequence_length, dimension
         particle_type = np.full(positions.shape[0], self._data[trajectory_idx][1], dtype=int)
         n_particles_per_example = positions.shape[0]
         label = self._data[trajectory_idx][0][time_idx]
@@ -77,7 +77,7 @@ class TrajectoriesDataset(torch.utils.data.Dataset):
         # convert to list of tuples
         # TODO (jpv): allow_pickle=True is potential security risk. See docs.
         self._data = [item for _, item in np.load(path, allow_pickle=True).items()]
-        self._dimension = self._data[0].shape[-1]
+        self._dimension = self._data[0][0].shape[-1]
         self._length = len(self._data)
 
     def __len__(self):
@@ -85,7 +85,7 @@ class TrajectoriesDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         positions, _particle_type = self._data[idx]
-        positions = np.transpose(positions, (1, 0, self._dimension))
+        positions = np.transpose(positions, (1, 0, 2))
         particle_type = np.full(positions.shape[0], _particle_type, dtype=int)
         n_particles_per_example = positions.shape[0]
         return (
