@@ -18,11 +18,11 @@ cd ..
 source start_venv.sh
 
 # assume data is already downloaded and hardcode WaterDropSample
-data="mpm-columns"
+data="Sand-3D"
 python3 -m gns.train --data_path="${SCRATCH}/gns_pytorch/${data}/dataset/" \
 --model_path="${SCRATCH}/gns_pytorch/${data}/models/" \
 --output_path="${SCRATCH}/gns_pytorch/${data}/rollouts/" \
 --cuda_device_number=0 \
---ntraining_steps=5000000 \
---model_file="latest" \
---train_state_file="latest"
+--ntraining_steps=5000000
+#--model_file="latest" \
+#--train_state_file="latest"
