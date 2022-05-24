@@ -1,5 +1,8 @@
-# Graph Network Simulator
+# Graph Network Simulator (GNS)
 > PyTorch version of Graph Network Simulator based on [https://arxiv.org/abs/2002.09405](https://arxiv.org/abs/2002.09405) and [https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate](https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate).
+
+Krishna Kumar, The University of Texas at Austin.
+Joseph Vantassel, Texas Advanced Computing Center, UT Austin.
 
 ## Run GNS
 > Training
@@ -69,3 +72,5 @@ sh ./build_venv.sh
 source start_venv.sh 
 ```
 
+### Acknowledgement
+This code is based upon work supported by the National Science Foundation under Grant OAC-2103937.
