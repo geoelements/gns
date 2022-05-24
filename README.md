@@ -54,7 +54,7 @@ We provide the following datasets:
   * `Sand`
   * `SandRamps`
 
-Download the dataset from [UT Box](https://utexas.app.box.com/s/awryzbj5oexa18f5njcnw7zr7uf4w80q)
+Download the dataset from [UT Box](https://utexas.app.box.com/s/p7kfg9vb742ofl53xu9rkwdjjukcva1p)
 
 
 ## Building environment on TACC LS6 and Frontera
