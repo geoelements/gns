@@ -78,7 +78,7 @@ def rollout(
     # Update kinematic particles from prescribed trajectory.
     kinematic_mask = (particle_types == KINEMATIC_PARTICLE_ID).clone().detach().to(device)
     next_position_ground_truth = ground_truth_positions[:, step]
-    kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, 2)
+    kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, current_positions.shape[-1])
     next_position = torch.where(
         kinematic_mask, next_position_ground_truth, next_position)
     predictions.append(next_position)
