@@ -1,5 +1,7 @@
 # Graph Network Simulator (GNS)
 
+[![DOI](https://zenodo.org/badge/427487727.svg)](https://zenodo.org/badge/latestdoi/427487727)
+
 > Krishna Kumar, The University of Texas at Austin.
 
 > Joseph Vantassel, Texas Advanced Computing Center, UT Austin.
