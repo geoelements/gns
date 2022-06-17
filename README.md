@@ -1,9 +1,8 @@
 # Graph Network Simulator (GNS)
-> PyTorch version of Graph Network Simulator based on [https://arxiv.org/abs/2002.09405](https://arxiv.org/abs/2002.09405) and [https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate](https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate).
 
-Krishna Kumar, The University of Texas at Austin.
+> Krishna Kumar, The University of Texas at Austin.
 
-Joseph Vantassel, Texas Advanced Computing Center, UT Austin.
+> Joseph Vantassel, Texas Advanced Computing Center, UT Austin.
 
 ## Run GNS
 > Training
@@ -25,13 +24,15 @@ python3 -m gns.train --data_path="${WORK_DIR}/datasets/${DATASET_NAME}/" --model
 
 > Rollout
 ```shell
-python3 -m gns.train --mode='rollout' --data_path='${WORK_DIR}/datasets/${DATASET_NAME}/' --model_path='${WORK_DIR}/models/${DATASET_NAME}/' --model_file='model.pt' --output_path='${WORK_DIR}/rollouts'
+python3 -m gns.train --mode='rollout' --data_path='${WORK_DIR}/datasets/${DATASET_NAME}/' --model_path='${WORK_DIR}/models/${DATASET_NAME}/' --model_file='model.pt' --train_state_file="train_state.pt" --output_path='${WORK_DIR}/rollouts'
 ```
 
 > Render
 ```shell
  python3 -m gns.render_rollout --rollout_path='${WORK_DIR}/rollouts/${DATASET_NAME}/rollout_0.pkl' 
 ```
+
+The renderer also writes `.vtu` files to visualize in ParaView.
 
 ![Sand rollout](figs/rollout_0.gif)
 > GNS prediction of Sand rollout after training for 2 million steps.
@@ -72,6 +73,9 @@ sh ./build_venv.sh
 ```shell
 source start_venv.sh 
 ```
+
+### Inspiration
+PyTorch version of Graph Network Simulator based on [https://arxiv.org/abs/2002.09405](https://arxiv.org/abs/2002.09405) and [https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate](https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate).
 
 ### Acknowledgement
 This code is based upon work supported by the National Science Foundation under Grant OAC-2103937.
