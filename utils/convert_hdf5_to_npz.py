@@ -29,8 +29,12 @@ if __name__ == "__main__":
         running_sum = dict(velocity_x=0, velocity_y=0, acceleration_x=0, acceleration_y=0)
         running_sumsq = dict(velocity_x=0, velocity_y=0, acceleration_x=0, acceleration_y=0)
         running_count = dict(velocity_x=0, velocity_y=0, acceleration_x=0, acceleration_y=0)
+    elif ndim == 3:
+        running_sum = dict(velocity_x=0, velocity_y=0, velocity_z=0, acceleration_x=0, acceleration_y=0, acceleration_z=0)
+        running_sumsq = dict(velocity_x=0, velocity_y=0, velocity_z=0, acceleration_x=0, acceleration_y=0, acceleration_z=0)
+        running_count = dict(velocity_x=0, velocity_y=0, velocity_z=0, acceleration_x=0, acceleration_y=0, acceleration_z=0)
     else:
-        raise NotImplementedError
+        raise NotImplementedError        
 
     trajectories = {}
     for nth_trajectory, directory in enumerate(directories):
@@ -52,9 +56,9 @@ if __name__ == "__main__":
         # open each file and copy data to positions tensor.
         for nth_step, (_, fname) in enumerate(fnumber_and_fname_sorted):
             with h5py.File(fname, "r") as f:
-                positions[nth_step, :, 0] = f["table"]["coord_x"][:]
-                positions[nth_step, :, 1] = f["table"]["coord_y"][:]
-        
+                for idx, name in zip(range(ndim), ["coord_x", "coord_y", "coord_z"]):
+                    positions[nth_step, :, idx] = f["table"][name][:]
+
         dt = float(args.dt)
         # compute velocities using finite difference
         # assume velocities before zero are equal to zero
@@ -74,10 +78,14 @@ if __name__ == "__main__":
                 data = velocities[:,:,0]
             elif key == "velocity_y":
                 data = velocities[:,:,1]
+            elif key == "velocity_z":
+                data = velocities[:,:,2]
             elif key == "acceleration_x":
                 data = accelerations[:,:,0]
             elif key == "acceleration_y":
                 data = accelerations[:,:,1]
+            elif key == "acceleration_z":
+                data = accelerations[:,:,2]
             else:
                 raise KeyError
 
@@ -92,7 +100,7 @@ if __name__ == "__main__":
     for key in running_sum:
         mean = running_sum[key] / running_count[key]
         std = np.sqrt((running_sumsq[key] - running_sum[key]**2/running_count[key]) / (running_count[key] - 1))
-        print(f"  {key}: mean={mean:.4f}, std={std:.4f}")
+        print(f"  {key}: mean={mean:.4E}, std={std:.4E}")
 
     np.savez_compressed(args.output, **trajectories)
     print(f"Output written to: {args.output}")
