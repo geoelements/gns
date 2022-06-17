@@ -28,6 +28,7 @@ It may require installing Tkinter with `sudo apt-get install python3.7-tk`.
 """  # pylint: disable=line-too-long
 
 import pickle
+from sys import displayhook
 
 from absl import app
 from absl import flags
@@ -35,6 +36,8 @@ from absl import flags
 from matplotlib import animation
 import matplotlib.pyplot as plt
 import numpy as np
+
+from pyevtk.hl import pointsToVTK
 
 flags.DEFINE_string("rollout_path", None, help="Path to rollout pickle file")
 flags.DEFINE_integer("step_stride", 3, help="Stride of steps to skip.")
@@ -59,6 +62,15 @@ def main(unused_argv):
     rollout_data = pickle.load(file)
 
   fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+  for ax_i, (label, rollout_field) in enumerate(
+      [("GNS", "predicted_rollout")]):    
+    arr = rollout_data[rollout_field]
+    coords0 = arr[0]
+    for i in range(len(arr)):
+      coords = arr[i]
+      disp = np.linalg.norm(coords - coords0, axis=1)
+      pointsToVTK(f"./gns-vtk/points{i}", coords[:, 0], coords[:, 1], coords[:, 2], data = {"displacement" : disp})
 
   plot_info = []
   for ax_i, (label, rollout_field) in enumerate(
