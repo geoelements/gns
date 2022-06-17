@@ -35,6 +35,8 @@ from absl import flags
 from matplotlib import animation
 import matplotlib.pyplot as plt
 import numpy as np
+import os
+from pyevtk.hl import pointsToVTK
 
 flags.DEFINE_string("rollout_path", None, help="Path to rollout pickle file")
 flags.DEFINE_integer("step_stride", 3, help="Stride of steps to skip.")
@@ -64,6 +66,20 @@ def main(unused_argv):
   for ax_i, (label, rollout_field) in enumerate(
       [("Reality", "ground_truth_rollout"),
        ("GNS", "predicted_rollout")]):
+    
+    # Write to VTK
+    path = f"./vtk-{label}"       
+    if not os.path.exists(path):
+      os.makedirs(path)
+    arr = rollout_data[rollout_field]
+    coords0 = arr[0]
+    for i in range(len(arr)):
+      coords = arr[i]
+      disp = np.linalg.norm(coords - coords0, axis=1)
+      pointsToVTK(f"{path}/points{i}", np.array(coords[:, 0]), 
+                                       np.array(coords[:, 1]), 
+                                       np.array(coords[:, 2]), 
+                                       data = {"displacement" : disp})   
     # Append the initial positions to get the full trajectory.
     trajectory = np.concatenate([
         rollout_data["initial_positions"],
