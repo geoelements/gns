@@ -2,6 +2,7 @@
 > PyTorch version of Graph Network Simulator based on [https://arxiv.org/abs/2002.09405](https://arxiv.org/abs/2002.09405) and [https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate](https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate).
 
 Krishna Kumar, The University of Texas at Austin.
+
 Joseph Vantassel, Texas Advanced Computing Center, UT Austin.
 
 ## Run GNS
