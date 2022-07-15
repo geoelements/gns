@@ -4,13 +4,15 @@ module reset
 
 # start env
 # ---------
-ml use /work2/02064/ajs2987/frontera/apps/modulefiles
-ml cuda/11.1
-ml nccl
+ml cuda/11.3
 ml cudnn
+ml nccl
 
 module load phdf5
 module load python3/3.9
+export LD_LIBRARY_PATH=/usr/lib64:$LD_LIBRARY_PATH
+
+python3 -m virtualenv venv
 
 source venv/bin/activate
 
