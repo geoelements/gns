@@ -78,7 +78,7 @@ def rollout(
     # Update kinematic particles from prescribed trajectory.
     kinematic_mask = (particle_types == KINEMATIC_PARTICLE_ID).clone().detach().to(device)
     next_position_ground_truth = ground_truth_positions[:, step]
-    kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, 2)
+    kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, current_positions.shape[-1])
     next_position = torch.where(
         kinematic_mask, next_position_ground_truth, next_position)
     predictions.append(next_position)
@@ -332,8 +332,8 @@ def _get_simulator(
 
   simulator = learned_simulator.LearnedSimulator(
       particle_dimensions=metadata['dim'],
-      nnode_in=30,
-      nedge_in=3,
+      nnode_in=37 if metadata['dim'] == 3 else 30,
+      nedge_in=metadata['dim'] + 1,
       latent_dim=128,
       nmessage_passing_steps=10,
       nmlp_layers=2,
