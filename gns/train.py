@@ -229,7 +229,7 @@ def train(rank, flags, world_size):
 
   dl = distribute.get_data_distributed_dataloader_by_samples(path=f'{flags["data_path"]}train.npz',
                                                              input_length_sequence=INPUT_SEQUENCE_LENGTH,
-                                                             batch_size=flags["batch_size"]*world_size,
+                                                             batch_size=flags["batch_size"],
                                                             )
 
   print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
