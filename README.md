@@ -58,7 +58,7 @@ We provide the following datasets:
   * `Sand`
   * `SandRamps`
 
-Download the dataset from [DesignSafe DataDepot](https://doi.org/10.17603/ds2-0phb-dg64). If you are using this dataset please cite 
+Download the dataset from [DesignSafe DataDepot](https://doi.org/10.17603/ds2-0phb-dg64). If you are using this dataset please cite [Vantassel and Kumar., 2022](https://github.com/geoelements/gns#dataset)
 
 
 ## Building environment on TACC LS6 and Frontera
