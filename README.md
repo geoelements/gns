@@ -58,7 +58,7 @@ We provide the following datasets:
   * `Sand`
   * `SandRamps`
 
-Download the dataset from [UT Box](https://utexas.app.box.com/s/p7kfg9vb742ofl53xu9rkwdjjukcva1p)
+Download the dataset from [DesignSafe DataDepot](https://doi.org/10.17603/ds2-0phb-dg64). If you are using this dataset please cite [Vantassel and Kumar., 2022](https://github.com/geoelements/gns#dataset)
 
 
 ## Building environment on TACC LS6 and Frontera
@@ -81,3 +81,11 @@ PyTorch version of Graph Network Simulator based on [https://arxiv.org/abs/2002.
 
 ### Acknowledgement
 This code is based upon work supported by the National Science Foundation under Grant OAC-2103937.
+
+### Citation
+
+#### Repo
+Kumar, K., & Vantassel, J. (2022). Graph Network Simulator: v1.0.1 (Version v1.0.1) [Computer software]. https://doi.org/10.5281/zenodo.6658322
+
+#### Dataset
+Vantassel, Joseph; Kumar, Krishna (2022) “Graph Network Simulator Datasets.” DesignSafe-CI. https://doi.org/10.17603/ds2-0phb-dg64 v1 
