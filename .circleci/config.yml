@@ -14,6 +14,11 @@ jobs:
             git clone https://github.com/geoelements/gns-sample.git 
             DATA_PATH="${TMP_DIR}/${DATASET_NAME}/datasets/"
             MODEL_PATH="${TMP_DIR}/${DATASET_NAME}/models/"
+            conda install -c anaconda absl-py -y
+            conda install -c conda-forge numpy -y
+            conda install -c conda-forge dm-tree -y
+            conda install -c conda-forge matplotlib-base -y
+            conda install -c conda-forge pyevtk -y
             python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10 --mode='train'
 
 workflows:
