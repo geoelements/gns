@@ -38,7 +38,7 @@ import numpy as np
 import os
 from pyevtk.hl import pointsToVTK
 
-flags.DEFINE_string("rollout_path", None, help="Path to rollout pickle file")
+flags.DEFINE_string("rollout_path", None, help="Path to rollout pickle file.")
 flags.DEFINE_integer("step_stride", 3, help="Stride of steps to skip.")
 flags.DEFINE_boolean("block_on_show", True, help="For test purposes.")
 

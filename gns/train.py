@@ -104,9 +104,7 @@ def rollout(
   return output_dict, loss
 
 
-def predict(
-        simulator: learned_simulator.LearnedSimulator,
-        device: str):
+def predict(device: str, FLAGS):
   """Predict rollouts.
 
   Args:
@@ -383,7 +381,7 @@ def main(_):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
       device = torch.device(f'cuda:{int(FLAGS.cuda_device_number)}')
-    predict(device)
+    predict(device, FLAGS)
 
 if __name__ == '__main__':
   app.run(main)
