@@ -12,9 +12,7 @@
 ## Run GNS
 > Training
 ```shell
-export DATASET_NAME="Sand"
-export WORK_DIR=${WORK_DIR}
-python3 -m gns.train --data_path="${WORK_DIR}/datasets/${DATASET_NAME}/" --model_path="${WORK_DIR}/models/${DATASET_NAME}/" --output_path="${WORK_DIR}/rollouts/${DATASET_NAME}/" -ntraining_steps=100
+python3 -m gns.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" -ntraining_steps=100
 ```
 
 > Resume training
@@ -22,19 +20,17 @@ python3 -m gns.train --data_path="${WORK_DIR}/datasets/${DATASET_NAME}/" --model
 To resume training specify `model_file` and `train_state_file`:
 
 ```shell
-export DATASET_NAME="Sand"
-export WORK_DIR=${WORK_DIR}
-python3 -m gns.train --data_path="${WORK_DIR}/datasets/${DATASET_NAME}/" --model_path="${WORK_DIR}/models/${DATASET_NAME}/" --output_path="${WORK_DIR}/rollouts/${DATASET_NAME}/" --model_file="model.pt" --train_state_file="train_state.pt" -ntraining_steps=100
+python3 -m gns.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>"  --model_file="model.pt" --train_state_file="train_state.pt" -ntraining_steps=100
 ```
 
 > Rollout
 ```shell
-python3 -m gns.train --mode="rollout" --data_path="${WORK_DIR}/datasets/${DATASET_NAME}/" --model_path="${WORK_DIR}/models/${DATASET_NAME}/" --model_file="model.pt" --train_state_file="train_state.pt" --output_path="${WORK_DIR}/rollouts/${DATASET_NAME}"
+python3 -m gns.train --mode="rollout" --data_path="<input-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" --model_file="model.pt" --train_state_file="train_state.pt"
 ```
 
 > Render
 ```shell
- python3 -m gns.render_rollout --rollout_path="${WORK_DIR}/rollouts/${DATASET_NAME}/rollout_0.pkl" 
+ python3 -m gns.render_rollout --rollout_path="<path-containing-rollout-file>/rollout_0.pkl" 
 ```
 
 The renderer also writes `.vtu` files to visualize in ParaView.
