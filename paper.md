@@ -98,7 +98,7 @@ where $n$ is the number of particles (nodes) and $\theta$ is the learnable param
 ![Distributed data parallelization in GNS.\label{fig:gns-ddp}](figs/gns-ddp.png){ width=80% }
 
 
-A test of the GNS's scalability was performed on a node of Lonestar 6 at the Texas Advanced Computing Center equipped with three NVIDIA A100 GPUs.  Performance wave evaluated using the WaterDropSample training dataset for 6000 training steps.  Tests were performed using the recommended `nccl` DDP backend.  Results of the strong-scaling test, see \autoref{fig:gns-scaling}, show strong scaling performance.
+We tested the strong scaling of the GNS code on a single node of Lonestar 6 at the Texas Advanced Computing Center equipped with three NVIDIA A100 GPUs.  We evaluated strong scaling for the [WaterDropSample](https://www.designsafe-ci.org/data/browser/public/designsafe.storage.published//PRJ-3702/WaterDropSample) dataset for 6000 training steps using the recommended `nccl` DDP backend.  \autoref{fig:gns-scaling} shows linear strong scaling performance.
 
 ![GNS strong-scaling on up to three NVIDIA A100 GPUs.\label{fig:gns-scaling}](figs/gns-scaling.png)
 
