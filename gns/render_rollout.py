@@ -1,32 +1,3 @@
-# Lint as: python3
-# pylint: disable=g-bad-file-header
-# Copyright 2020 DeepMind Technologies Limited. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or  implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ============================================================================
-"""Simple matplotlib rendering of a rollout prediction against ground truth.
-
-Usage (from parent directory):
-
-`python -m gns.render_rollout --rollout_path={OUTPUT_PATH}/rollout_test_1.pkl`
-
-Where {OUTPUT_PATH} is the output path passed to `train.py` in "eval_rollout"
-mode.
-
-It may require installing Tkinter with `sudo apt-get install python3.7-tk`.
-
-"""  # pylint: disable=line-too-long
-
 import pickle
 
 from absl import app
@@ -38,13 +9,15 @@ import numpy as np
 import os
 from pyevtk.hl import pointsToVTK
 
-flags.DEFINE_string("rollout_path", None, help="Path to rollout pickle file.")
+flags.DEFINE_string("rollout_dir", None, help="Directory where rollout.pkl are located")
+flags.DEFINE_string("rollout_name", None, help="Name of rollout `.pkl` file")
 flags.DEFINE_integer("step_stride", 3, help="Stride of steps to skip.")
-flags.DEFINE_boolean("block_on_show", True, help="For test purposes.")
+flags.DEFINE_enum("output_mode", "gif", ["both", "gif", "vtk"], help="Type of render output")
 
 FLAGS = flags.FLAGS
 
 TYPE_TO_COLOR = {
+    1: "red",  # for droplet
     3: "black",  # Boundary particles.
     0: "green",  # Rigid solids.
     7: "magenta",  # Goop.
@@ -53,69 +26,193 @@ TYPE_TO_COLOR = {
 }
 
 
-def main(unused_argv):
+class Render():
 
-  if not FLAGS.rollout_path:
-    raise ValueError("A `rollout_path` must be passed.")
-  with open(FLAGS.rollout_path, "rb") as file:
-    rollout_data = pickle.load(file)
+    def __init__(self, input_dir, input_name):
+        # Texts to describe rollout cases for data and render
+        rollout_cases = [
+            ["ground_truth_rollout", "MPM"], ["predicted_rollout", "GNS"]]
+        self.rollout_cases = rollout_cases
+        self.input_dir = input_dir
+        self.input_name = input_name
+        self.output_dir = input_dir
+        self.output_name = input_name
 
-  fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+        # Get trajectory
+        with open(f"{self.input_dir}{self.input_name}.pkl", "rb") as file:
+            rollout_data = pickle.load(file)
+        self.rollout_data = rollout_data
+        trajectory = {}
+        for rollout_case in rollout_cases:
+            trajectory[rollout_case[0]] = np.concatenate(
+                [rollout_data["initial_positions"], rollout_data[rollout_case[0]]], axis=0
+            )
+        self.trajectory = trajectory
 
-  plot_info = []
-  for ax_i, (label, rollout_field) in enumerate(
-      [("Reality", "ground_truth_rollout"),
-       ("GNS", "predicted_rollout")]):
-    
-    # Write to VTK
-    path = f"./vtk-{label}"       
-    if not os.path.exists(path):
-      os.makedirs(path)
-    arr = rollout_data[rollout_field]
-    coords0 = arr[0]
-    for i in range(len(arr)):
-      coords = arr[i]
-      disp = np.linalg.norm(coords - coords0, axis=1)
-      pointsToVTK(f"{path}/points{i}", np.array(coords[:, 0]), 
-                                       np.array(coords[:, 1]), 
-                                       np.array(coords[:, 2]), 
-                                       data = {"displacement" : disp})   
-    # Append the initial positions to get the full trajectory.
-    trajectory = np.concatenate([
-        rollout_data["initial_positions"],
-        rollout_data[rollout_field]], axis=0)
-    ax = axes[ax_i]
-    ax.set_title(label)
-    bounds = rollout_data["metadata"]["bounds"]
-    ax.set_xlim(bounds[0][0], bounds[0][1])
-    ax.set_ylim(bounds[1][0], bounds[1][1])
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_aspect(1.)
-    points = {
-        particle_type: ax.plot([], [], "o", ms=2, color=color)[0]
-        for particle_type, color in TYPE_TO_COLOR.items()}
-    plot_info.append((ax, trajectory, points))
+        # Trajectory information
+        self.dims = trajectory[rollout_cases[0][0]].shape[2]
+        self.num_particles = trajectory[rollout_cases[0][0]].shape[1]
+        self.num_steps = trajectory[rollout_cases[0][0]].shape[0]
+        self.boundaries = rollout_data["metadata"]["bounds"]
+        self.particle_type = rollout_data["particle_types"]
 
-  num_steps = trajectory.shape[0]
+    def color_map(self):
+        """
+        Get color map array for each particle type for visualization
+        """
+        # color mask for visualization for different material types
+        color_map = np.empty(self.num_particles, dtype="object")
+        for material_id, color in TYPE_TO_COLOR.items():
+            print(material_id, color)
+            color_index = np.where(np.array(self.particle_type) == material_id)
+            print(color_index)
+            color_map[color_index] = color
+        color_map = list(color_map)
+        return color_map
 
-  def update(step_i):
-    outputs = []
-    for _, trajectory, points in plot_info:
-      for particle_type, line in points.items():
-        mask = rollout_data["particle_types"] == particle_type
-        line.set_data(trajectory[step_i, mask, 0],
-                      trajectory[step_i, mask, 1])
-        outputs.append(line)
-    return outputs
+    def color_mask(self):
+        """
+        Get color mask and corresponding colors for visualization
+        """
+        color_mask = []
+        for material_id, color in TYPE_TO_COLOR.items():
+            mask = np.array(self.particle_type) == material_id
+            if mask.any() == True:
+                color_mask.append([mask, color])
+        return color_mask
 
-  unused_animation = animation.FuncAnimation(
-      fig, update,
-      frames=np.arange(0, num_steps, FLAGS.step_stride), interval=10)
+    def render_gif_animation(
+            self, point_size=1, timestep_stride=3, vertical_camera_angle=20, viewpoint_rotation=0.5
+    ):
+        """
+        Render `.gif` animation from `,pkl` trajectory.
+        :param point_size: particle size for visualization
+        :param timestep_stride: numer of timesteps to stride for visualization (i.e., sampling rate)
+        :param vertical_camera_angle: camera angle in airplane view in 3d render
+        :param viewpoint_rotation: speed of viewpoint rotation in 3d render
+        :return: gif format animation
+        """
+        # Init figures
+        fig = plt.figure()
+        if self.dims == 2:
+            ax1 = fig.add_subplot(1, 2, 1)
+            ax2 = fig.add_subplot(1, 2, 2)
+            axes = [ax1, ax2]
+        elif self.dims == 3:
+            ax1 = fig.add_subplot(1, 2, 1, projection='3d')
+            ax2 = fig.add_subplot(1, 2, 2, projection='3d')
+            axes = [ax1, ax2]
 
-  unused_animation.save('rollout.gif', dpi=80, fps=30, writer='imagemagick')
-  plt.show(block=FLAGS.block_on_show)
+        # Define datacase name
+        trajectory_datacases = [self.rollout_cases[0][0], self.rollout_cases[1][0]]
+        render_datacases = [self.rollout_cases[0][1], self.rollout_cases[1][1]]
+
+        # Get boundary of simulation
+        xboundary = self.boundaries[0]
+        yboundary = self.boundaries[1]
+        if self.dims == 3:
+            zboundary = self.boundaries[2]
+
+        # Get color mask for visualization
+        color_mask = self.color_mask()
+
+        # Fig creating function for 2d
+        if self.dims == 2:
+            def animate(i):
+                print(f"Render step {i}/{self.num_steps}")
+
+                fig.clear()
+                for j, datacase in enumerate(trajectory_datacases):
+                    # select ax to plot at set boundary
+                    axes[j] = fig.add_subplot(1, 2, j + 1, autoscale_on=False)
+                    axes[j].set_aspect(1.)
+                    axes[j].set_xlim([float(xboundary[0]), float(xboundary[1])])
+                    axes[j].set_ylim([float(yboundary[0]), float(yboundary[1])])
+                    for mask, color in color_mask:
+                        axes[j].scatter(self.trajectory[datacase][i][mask, 0],
+                                        self.trajectory[datacase][i][mask, 1], s=point_size, color=color)
+                    axes[j].grid(True, which='both')
+                    axes[j].set_title(render_datacases[j])
+
+        # Fig creating function for 3d
+        elif self.dims == 3:
+            def animate(i):
+                print(f"Render step {i}/{self.num_steps} for {self.output_name}")
+
+                fig.clear()
+                for j, datacase in enumerate(trajectory_datacases):
+                    # select ax to plot at set boundary
+                    axes[j] = fig.add_subplot(1, 2, j + 1, projection='3d', autoscale_on=False)
+                    axes[j].set_xlim([float(xboundary[0]), float(xboundary[1])])
+                    axes[j].set_ylim([float(yboundary[0]), float(yboundary[1])])
+                    axes[j].set_zlim([float(zboundary[0]), float(zboundary[1])])
+                    for mask, color in color_mask:
+                        axes[j].scatter(self.trajectory[datacase][i][mask, 0],
+                                        self.trajectory[datacase][i][mask, 1],
+                                        self.trajectory[datacase][i][mask, 2], s=point_size, color=color)
+                    # rotate viewpoints angle little by little for each timestep
+                    axes[j].view_init(elev=vertical_camera_angle, azim=i * viewpoint_rotation)
+                    axes[j].grid(True, which='both')
+                    axes[j].set_title(render_datacases[j])
+
+        # Creat animation
+        ani = animation.FuncAnimation(
+            fig, animate, frames=np.arange(0, self.num_steps, timestep_stride), interval=10)
+
+        ani.save(f'{self.output_dir}{self.output_name}.gif', dpi=100, fps=30, writer='imagemagick')
+        print(f"Animation saved to: {self.output_dir}{self.output_name}.gif")
+
+    def write_vtk(self):
+        for rollout_case, label in self.rollout_cases:
+            path = f"{self.output_dir}{self.output_name}_vtk-{label}"
+            if not os.path.exists(path):
+                os.makedirs(path)
+            initial_position = self.trajectory[rollout_case][0]
+            for i, coord in enumerate(self.trajectory[rollout_case]):
+                disp = np.linalg.norm(coord - initial_position, axis=1)
+                if self.dims == 2:
+                    pointsToVTK(f"{path}/points{i}",
+                                np.array(coord[:, 0]),
+                                np.array(coord[:, 1]),
+                                np.zeros_like(coord[:, 1]),
+                                data={"displacement": disp})
+                elif self.dims == 3:
+                    pointsToVTK(f"{path}/points{i}",
+                                np.array(coord[:, 0]),
+                                np.array(coord[:, 1]),
+                                np.array(coord[:, 2]),
+                                data={"displacement": disp})
+
+        print(f"vtk saved to: {self.output_dir}{self.output_name}")
 
 
-if __name__ == "__main__":
-  app.run(main)
+def main(_):
+    if not FLAGS.rollout_dir:
+        raise ValueError("A `rollout_dir` must be passed.")
+    if not FLAGS.rollout_name:
+        raise ValueError("A `rollout_name`must be passed.")
+
+    render = Render(input_dir=FLAGS.rollout_dir, input_name=FLAGS.rollout_name)
+
+    if FLAGS.output_mode == "both":
+        render.render_gif_animation(
+            point_size=1,
+            timestep_stride=FLAGS.step_stride,
+            vertical_camera_angle=20,
+            viewpoint_rotation=0.3
+        )
+        render.write_vtk()
+    elif FLAGS.output_mode == "gif":
+        render.render_gif_animation(
+            point_size=1,
+            timestep_stride=FLAGS.step_stride,
+            vertical_camera_angle=20,
+            viewpoint_rotation=0.3
+        )
+    elif FLAGS.output_mode == "vtk":
+        render.write_vtk()
+
+
+if __name__ == '__main__':
+    app.run(main)
+
