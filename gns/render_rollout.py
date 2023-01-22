@@ -31,7 +31,7 @@ class Render():
     def __init__(self, input_dir, input_name):
         # Texts to describe rollout cases for data and render
         rollout_cases = [
-            ["ground_truth_rollout", "MPM"], ["predicted_rollout", "GNS"]]
+            ["ground_truth_rollout", "Reality"], ["predicted_rollout", "GNS"]]
         self.rollout_cases = rollout_cases
         self.input_dir = input_dir
         self.input_name = input_name

@@ -32,7 +32,7 @@ python3 -m gns.train --mode="rollout" --data_path="<input-data-path>" --model_pa
 
 > Render
 ```shell
- python3 -m gns.render_rollout --rollout_path="<path-containing-rollout-file>/rollout_0.pkl" 
+python3 -m gns.render_rollout --output_mode="gif" --rollout_dir="<path-containing-rollout-file>" --rollout_name="rollout_0"
 ```
 
 The renderer also writes `.vtu` files to visualize in ParaView.
