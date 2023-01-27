@@ -12,7 +12,7 @@ from pyevtk.hl import pointsToVTK
 flags.DEFINE_string("rollout_dir", None, help="Directory where rollout.pkl are located")
 flags.DEFINE_string("rollout_name", None, help="Name of rollout `.pkl` file")
 flags.DEFINE_integer("step_stride", 3, help="Stride of steps to skip.")
-flags.DEFINE_enum("output_mode", "gif", ["both", "gif", "vtk"], help="Type of render output")
+flags.DEFINE_enum("output_mode", "gif", ["gif", "vtk"], help="Type of render output")
 
 FLAGS = flags.FLAGS
 
@@ -95,8 +95,8 @@ class Render():
         # Init figures
         fig = plt.figure()
         if self.dims == 2:
-            ax1 = fig.add_subplot(1, 2, 1)
-            ax2 = fig.add_subplot(1, 2, 2)
+            ax1 = fig.add_subplot(1, 2, 1, projection='rectilinear')
+            ax2 = fig.add_subplot(1, 2, 2, projection='rectilinear')
             axes = [ax1, ax2]
         elif self.dims == 3:
             ax1 = fig.add_subplot(1, 2, 1, projection='3d')
@@ -170,20 +170,12 @@ class Render():
             initial_position = self.trajectory[rollout_case][0]
             for i, coord in enumerate(self.trajectory[rollout_case]):
                 disp = np.linalg.norm(coord - initial_position, axis=1)
-                if self.dims == 2:
-                    pointsToVTK(f"{path}/points{i}",
-                                np.array(coord[:, 0]),
-                                np.array(coord[:, 1]),
-                                np.zeros_like(coord[:, 1]),
-                                data={"displacement": disp})
-                elif self.dims == 3:
-                    pointsToVTK(f"{path}/points{i}",
-                                np.array(coord[:, 0]),
-                                np.array(coord[:, 1]),
-                                np.array(coord[:, 2]),
-                                data={"displacement": disp})
-
-        print(f"vtk saved to: {self.output_dir}{self.output_name}")
+                pointsToVTK(f"{path}/points{i}",
+                            np.array(coord[:, 0]),
+                            np.array(coord[:, 1]),
+                            np.zeros_like(coord[:, 1]) if self.dims == 2 else np.array(coord[:, 2]),
+                            data={"displacement": disp})
+        print(f"vtk saved to: {self.output_dir}{self.output_name}...")
 
 
 def main(_):
@@ -194,15 +186,7 @@ def main(_):
 
     render = Render(input_dir=FLAGS.rollout_dir, input_name=FLAGS.rollout_name)
 
-    if FLAGS.output_mode == "both":
-        render.render_gif_animation(
-            point_size=1,
-            timestep_stride=FLAGS.step_stride,
-            vertical_camera_angle=20,
-            viewpoint_rotation=0.3
-        )
-        render.write_vtk()
-    elif FLAGS.output_mode == "gif":
+    if FLAGS.output_mode == "gif":
         render.render_gif_animation(
             point_size=1,
             timestep_stride=FLAGS.step_stride,
