@@ -21,7 +21,7 @@ In the balls-in-a-box example, the GNN first takes the original graph $G=\left(\
 The GNN then updates the state of the physical system through message passing, which models the exchange of energy and momentum between the balls communicating through the edges, and returns an updated graph $G^\prime=\left(\boldsymbol{V}^\prime,\boldsymbol{E}^\prime\right)$ (Figure 1c). 
 After the GNN computation, we may decode G^\prime to extract useful information related to the future state of the physical system ($\boldsymbol{X}^{t+1}$) such as the next position or acceleration of the balls (Figure 1d).
 
-![balls-in-a-box](img/fig1.svg)
+![balls-in-a-box](img/balls-in-a-box.svg)
 *Figure. 1. An example of a graph and graph neural network (GNN) that process the graph (modified from Battaglia et al. (2018)): 
 (a) A state of the current physical system ($\boldsymbol{X}^t$) where the balls are bouncing in a box boundary; 
 (b) Graph representation of the physical system ($G$). 
@@ -73,9 +73,9 @@ Assuming all parameters in $\boldsymbol{\Theta}_\gamma$ are 1.0 for simpliticy, 
 At the end of the message passing, the graph vertex and edge features ($\boldsymbol{v}_i$ and $\boldsymbol{e}_{i,\ j}$) are updated to $\boldsymbol{v}_i^\prime$ and $\boldsymbol{e}_{i,\ j}^\prime$. 
 The GNN may include multiple message passing steps to propagate the information further through the network.
 
-![message_construction](img/fig2a.svg){width=55%}
+![message_construction](img/message_construction.svg){width=55%}
 (a)
-![update](img/fig2b.svg){width=55%}
+![update](img/message_aggregate.svg){width=55%}
 (b)
 
 *Figure 2. An example of message passing on a graph: 
@@ -100,7 +100,7 @@ Next, the processer (Figure 3c-2) converts $G_0$ to $G_M$ with $M$ stacks of mes
 Finally, the decoder (Figure 3c-3) extracts dynamics of the particles ($\boldsymbol{Y}^t$) from $G_M$, such as the acceleration of the physical system. 
 The entire simulation (Figure 3a) involves running GNS surrogate model through $K$ timesteps predicting from the initial state $\boldsymbol{X}_0$ to $\boldsymbol{X}_K$ $(\boldsymbol{X}_0,\ \ \boldsymbol{X}_1,\ \ \ldots,\ \ \boldsymbol{X}_K$), updating at each step ($\boldsymbol{X}_t\rightarrow\boldsymbol{X}_{t+1}$)
 
-![GNS](img/fig3.svg)
+![GNS](img/gns_structure.svg)
 *Figure 3. The structure of the graph neural network (GNN)-based physics simulator (GNS) for granular flow (modified from Sanchez-Gonzalez et al. (2020)):
 (a) The entire simulation procedure using the GNS, 
 (b) The computation procedure of GNS and its composition, (c) The computation procedure of the parameterized function approximator $d_\theta$ and its composition.*
