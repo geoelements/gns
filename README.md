@@ -37,7 +37,7 @@ python3 -m gns.render_rollout --output_mode="gif" --rollout_dir="<path-containin
 
 The renderer also writes `.vtu` files to visualize in ParaView.
 
-![Sand rollout](figs/rollout_0.gif)
+![Sand rollout](docs/img/rollout_0.gif)
 > GNS prediction of Sand rollout after training for 2 million steps.
 
 ## Datasets
