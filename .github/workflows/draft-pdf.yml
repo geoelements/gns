@@ -1,4 +1,8 @@
-on: [push]
+on: 
+  push:
+    paths:
+      - figs/**
+      - paper.md
 
 jobs:
   paper:
