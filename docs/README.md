@@ -1,8 +1,3 @@
-# Graph Networks
+# Graph Network Simulator
 
-## Multi-Layer Perceptrons (MLPs)
-![mlp](img/mlp.svg)
-
-
-## Graph Networks (GNS)
-![gns](img/gns.svg)
+GNS is a general purpose graph-network-based surrogate model simulator that can simulate fluid and particulate systems. GNS is a viable surrogate for numerical models such as Material Point Method, Smooth Particle Hydrodynamics and Computational Fluid dynamics.
