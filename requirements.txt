@@ -1,6 +1,6 @@
 absl-py
 autopep8
-numpy
+numpy==1.23.1
 dm-tree
 matplotlib
 pyevtk
