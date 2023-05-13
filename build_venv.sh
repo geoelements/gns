@@ -4,22 +4,15 @@ module reset
 
 # create env
 # ---------
-ml cuda/11.3
-ml cudnn
-ml nccl
-
-module load phdf5
-module load python3/3.9
-export LD_LIBRARY_PATH=/usr/lib64:$LD_LIBRARY_PATH
+source module.sh
 
 python3 -m virtualenv venv
 source venv/bin/activate
 
 which python
 python -m pip install --upgrade pip
-python -m pip install torch==1.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113
-python -m pip install torch-spline-conv -f https://data.pyg.org/whl/torch-1.11.0+cu113.html --no-binary torch-spline-conv
-python -m pip install torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -f https://data.pyg.org/whl/torch-1.11.0+cu113.html
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.0.0+cu118.html
 python -m pip install -r requirements.txt
 
 # test env

@@ -4,15 +4,7 @@ module reset
 
 # start env
 # ---------
-ml cuda/11.3
-ml cudnn
-ml nccl
-
-module load phdf5
-module load python3/3.9
-export LD_LIBRARY_PATH=/usr/lib64:$LD_LIBRARY_PATH
-
-python3 -m virtualenv venv
+source module.sh
 
 source venv/bin/activate
 
