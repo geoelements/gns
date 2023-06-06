@@ -14,7 +14,10 @@ Graph Network-based Simulator (GNS) is a framework for developing generalizable,
 ## Run GNS
 > Training
 ```shell
+# For particulate domain,
 python3 -m gns.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" -ntraining_steps=100
+# For mesh-based domain,
+python3 -m meshnet.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" -ntraining_steps=100
 ```
 
 > Resume training
@@ -22,20 +25,29 @@ python3 -m gns.train --data_path="<input-training-data-path>" --model_path="<pat
 To resume training specify `model_file` and `train_state_file`:
 
 ```shell
+# For particulate domain,
 python3 -m gns.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>"  --model_file="model.pt" --train_state_file="train_state.pt" -ntraining_steps=100
+# For mesh-based domain,
+python3 -m meshnet.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>"  --model_file="model.pt" --train_state_file="train_state.pt" -ntraining_steps=100
 ```
 
 > Rollout
 ```shell
+# For particulate domain,
 python3 -m gns.train --mode="rollout" --data_path="<input-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" --model_file="model.pt" --train_state_file="train_state.pt"
+# For mesh-based domain,
+python3 -m meshnet.train --mode="rollout" --data_path="<input-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" --model_file="model.pt" --train_state_file="train_state.pt"
 ```
 
 > Render
 ```shell
-python3 -m gns.render_rollout --output_mode="gif" --rollout_dir="<path-containing-rollout-file>" --rollout_name="rollout_0"
+# For particulate domain,
+python3 -m gns.render_rollout --output_mode="gif" --rollout_dir="<path-containing-rollout-file>" --rollout_name="<name-of-rollout-file>"
+# For mesh-based domain,
+python3 -m gns.render --rollout_dir="<path-containing-rollout-file>" --rollout_name="<name-of-rollout-file>"
 ```
 
-The renderer also writes `.vtu` files to visualize in ParaView.
+In particulate domain, the renderer also writes `.vtu` files to visualize in ParaView.
 
 ![Sand rollout](docs/img/rollout_0.gif)
 > GNS prediction of Sand rollout after training for 2 million steps.
@@ -78,7 +90,10 @@ source start_venv.sh
 ```
 
 ### Inspiration
-PyTorch version of Graph Network Simulator based on [https://arxiv.org/abs/2002.09405](https://arxiv.org/abs/2002.09405) and [https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate](https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate).
+PyTorch version of Graph Network Simulator and Mesh Graph Network Simulator are based on:
+* [https://arxiv.org/abs/2002.09405](https://arxiv.org/abs/2002.09405) and [https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate](https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate)
+* [https://arxiv.org/abs/2010.03409](https://arxiv.org/abs/2002.09405) and [https://github.com/deepmind/deepmind-research/tree/master/meshgraphnets](https://github.com/deepmind/deepmind-research/tree/master/meshgraphnets)
+* [https://github.com/echowve/meshGraphNets_pytorch](https://github.com/echowve/meshGraphNets_pytorch)
 
 ### Acknowledgement
 This code is based upon work supported by the National Science Foundation under Grant OAC-2103937.
