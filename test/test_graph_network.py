@@ -1,4 +1,4 @@
-import unittest
+import pytest
 import torch
 import os
 import sys
@@ -9,35 +9,34 @@ sys.path.append(parent_dir)
 
 from gns.graph_network import EncodeProcessDecode
 
-class TestModels(unittest.TestCase):
+@pytest.fixture
+def model_data():
+    batch_size = 10
+    nparticles = 20
+    nnode_in_features = 30
+    nnode_out_features = 2
+    nedge_in_features = 3
+    latent_dim = 128
+    nmessage_passing_steps = 2
+    nmlp_layers = 2
+    mlp_hidden_dim = 128
+    model = EncodeProcessDecode(
+        nnode_in_features,
+        nnode_out_features,
+        nedge_in_features,
+        latent_dim,
+        nmessage_passing_steps,
+        nmlp_layers,
+        mlp_hidden_dim,
+    )
+    x = torch.rand(batch_size, nparticles, nnode_in_features)
+    edge_index = torch.randint(0, nparticles, (2, nparticles))
+    edge_features = torch.rand(batch_size, nparticles, nedge_in_features)
 
-    def setUp(self):
-        self.batch_size = 10
-        self.nparticles = 20
-        self.nnode_in_features = 30
-        self.nnode_out_features = 2
-        self.nedge_in_features = 3
-        self.latent_dim = 128
-        self.nmessage_passing_steps = 2
-        self.nmlp_layers = 2
-        self.mlp_hidden_dim = 128
-        self.model = EncodeProcessDecode(
-            self.nnode_in_features,
-            self.nnode_out_features,
-            self.nedge_in_features,
-            self.latent_dim,
-            self.nmessage_passing_steps,
-            self.nmlp_layers,
-            self.mlp_hidden_dim,
-        )
-        self.x = torch.rand(self.batch_size, self.nparticles, self.nnode_in_features)
-        self.edge_index = torch.randint(0, self.nparticles, (2, self.nparticles))
-        self.edge_features = torch.rand(self.batch_size, self.nparticles, self.nedge_in_features)
+    return model, x, edge_index, edge_features, nparticles, nnode_out_features
 
-    def test_encode_process_decode(self):
-        output = self.model(self.x, self.edge_index, self.edge_features)
-        self.assertEqual(tuple(output[0].shape), (self.nparticles, self.nnode_out_features))
-        self.assertEqual(tuple(output[1].shape), (self.nparticles, self.nnode_out_features))
-
-if __name__ == "__main__":
-    unittest.main()
+def test_encode_process_decode(model_data):
+    model, x, edge_index, edge_features, nparticles, nnode_out_features = model_data
+    output = model(x, edge_index, edge_features)
+    assert output[0].shape == (nparticles, nnode_out_features)
+    assert output[1].shape == (nparticles, nnode_out_features)
