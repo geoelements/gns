@@ -62,31 +62,6 @@ The Graph Network Simulator (GNS) uses PyTorch and PyTorch Geometric for constru
 
 GNS models are trained on 1000s of particle trajectories from MPM (for sands) and Smooth Particle Hydrodynamics (for water) for 20 million steps. 
 
-## Dataset format
-
-We use the numpy `.npz` format for storing positional data for GNS training.  The `.npz` format includes a list of tuples of arbitrary length where each tuple corresponds to a differenet training trajectory and is of the form `(position, particle_type)`.  The data loader provides `INPUT_SEQUENCE_LENGTH` positions, set equal to six by default, to provide the GNS with the last `INPUT_SEQUENCE_LENGTH` minus one positions as input to predict the position at the next time step.  The `position` is a 3-D tensor of shape `(n_time_steps, n_particles, n_dimensions)` and `particle_type` is a 1-D tensor of shape `(n_particles)`.  
-
-The dataset contains:
-
-* Metadata file with dataset information `(sequence length, dimensionality, box bounds, default connectivity radius, statistics for normalization, ...)`:
-
-```
-{
-  "bounds": [[0.1, 0.9], [0.1, 0.9]], 
-  "sequence_length": 320, 
-  "default_connectivity_radius": 0.015, 
-  "dim": 2, 
-  "dt": 0.0025, 
-  "vel_mean": [5.123277536458455e-06, -0.0009965205918140803], 
-  "vel_std": [0.0021978993231675805, 0.0026653552458701774], 
-  "acc_mean": [5.237611158734309e-07, 2.3633027988858656e-07], 
-  "acc_std": [0.0002582944917306106, 0.00029554531667679154]
-}
-```
-* npz containing data for all trajectories `(particle types, positions, global context, ...)`:
-
-Training datasets for Sand, SandRamps, and WaterDropSample are available on [DesignSafe Data Depot](https://www.designsafe-ci.org/data/browser/public/designsafe.storage.published/PRJ-3702) [@vantassel2022gnsdata].
-
 # Parallelization and scaling
 
 The GNS is parallelized to run across multiple GPUs using the PyTorch Distributed Data Parallel (DDP) model.  The DDP model spawns as many GNS models as the number of GPUs, distributing the dataset across all GPU nodes.  Consider, our training dataset with 20 simulations, each with 206 time steps of positional data $x_i$, which yields $(206 - 6) \times 20 = 4000$ training trajectories.  We subtract six position from the GNS training dataset as we utilize five previous velocities, computed from six positions, to predict the next position.  The 4000 training tajectories are subsequently distributed equally to the four GPUs (1000 training trajectories/GPU).  Assuming a batch size of 2, each GPU handles 500 trajectories in a batch.  The loss from the training trajectories are computed as
