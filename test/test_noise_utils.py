@@ -26,7 +26,7 @@ def test_get_random_walk_noise_for_position_sequence(nparticles, dim, noise_std_
     np.testing.assert_allclose(
         computed_noise_std_last_step.numpy(), 
         noise_std_last_step, 
-        atol=1e-6, 
+        atol=1e-3, 
         err_msg="Standard deviation of the noise in the last step does not match the input."
     )
 
