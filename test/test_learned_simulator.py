@@ -56,3 +56,19 @@ def test_encoder_preprocessor(simulator):
 
     # check the constructed graph has the expected edge
     assert {tuple(edge_index[:, i].tolist()) for i in range(edge_index.shape[1])} == {(0, 0), (1, 1)}
+
+def test_position_prediction(simulator):
+    """Test for position prediction"""
+    position_sequence = torch.tensor([[[0.0, 0.0], [0.0, 0.1], [0.0, 0.2], [0.0, 0.3], [0.0, 0.4], [0.0, 0.5]],
+                                      [[0.0, 0.0], [0.0, 0.2], [0.0, 0.4], [0.0, 0.6], [0.0, 0.8], [0.0, 1.0]]])
+    nparticles_per_example = torch.tensor([2])
+    particle_types = torch.tensor([0, 0])
+
+    # Call the simulator to obtain the predicted next position
+    predicted_position_sequence = simulator(position_sequence, nparticles_per_example, particle_types)
+    
+    # For the purpose of this test, we will assume the expected next position is a unit step in the y-direction
+    expected_next_position = torch.tensor([[[0.0, 0.6], [0.0, 1.1]]])
+
+    # Check the predicted position
+    assert torch.allclose(predicted_position_sequence[:, -1, :], expected_next_position, atol=1e-6)
