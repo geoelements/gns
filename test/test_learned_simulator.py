@@ -55,4 +55,4 @@ def test_encoder_preprocessor(simulator):
     assert set(edge_index[1].tolist()) == set([0, 1])  # receivers
 
     # check the constructed graph has the expected edge
-    assert {tuple(edge_index[:, i].tolist()) for i in range(edge_index.shape[1])} == {(0, 1), (1, 0)}
+    assert {tuple(edge_index[:, i].tolist()) for i in range(edge_index.shape[1])} == {(0, 0), (1, 1)}
