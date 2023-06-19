@@ -19,6 +19,7 @@ jobs:
             conda install -c conda-forge dm-tree -y
             conda install -c conda-forge matplotlib-base -y
             conda install -c conda-forge pyevtk -y
+            python3 test/test_data_loader.py
             python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10 --mode='train'
 
 workflows:
