@@ -23,6 +23,7 @@ jobs:
             python3 test/test_data_loader.py
             python3 test/test_graph_network.py
             pytest test/test_learned_simulator.py
+            pytest test/test_noise_utils.py
             python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10 --mode='train'
 
 workflows:
