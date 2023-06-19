@@ -398,7 +398,10 @@ class EncodeProcessDecode(nn.Module):
           (2, nedges)
         edge_features: Edge features as a torch tensor with shape 
           (nedges, nedge_in_features)
-
+          
+      Returns:
+        x: Particle state representation as a torch tensor with shape
+          (nparticles, nnode_out_features)
     """
     x, edge_features = self._encoder(x, edge_features)
     x, edge_features = self._processor(x, edge_index, edge_features)
