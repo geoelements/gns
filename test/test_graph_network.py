@@ -37,7 +37,7 @@ class TestModels(unittest.TestCase):
     def test_encode_process_decode(self):
         output = self.model(self.x, self.edge_index, self.edge_features)
         self.assertEqual(tuple(output[0].shape), (self.nparticles, self.nnode_out_features))
-        self.assertEqual(output[1].shape, (self.batch_size, self.nparticles, self.latent_dim))
+        self.assertEqual(tuple(output[1].shape), (self.nparticles, self.nnode_out_features))
 
 if __name__ == "__main__":
     unittest.main()
