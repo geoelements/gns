@@ -8,7 +8,7 @@ import sys
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(parent_dir)
 
-from gns import graph_network
+from gns.learned_simulator import LearnedSimulator
 
 
 @pytest.fixture
