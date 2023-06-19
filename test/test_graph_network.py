@@ -36,7 +36,7 @@ class TestModels(unittest.TestCase):
 
     def test_encode_process_decode(self):
         output = self.model(self.x, self.edge_index, self.edge_features)
-        self.assertEqual(output[0].shape, torch.Size(self.nparticles, self.nnode_out_features))
+        self.assertEqual(tuple(output[0].shape), (self.nparticles, self.nnode_out_features))
         self.assertEqual(output[1].shape, (self.batch_size, self.nparticles, self.latent_dim))
 
 if __name__ == "__main__":
