@@ -27,8 +27,18 @@ TYPE_TO_COLOR = {
 
 
 class Render():
+    """
+    Render rollout data into gif or vtk files
+    """
 
     def __init__(self, input_dir, input_name):
+        """
+            Initialize render class
+
+        Args:
+            input_dir (str): Directory where rollout.pkl are located
+            input_name (str): Name of rollout `.pkl` file
+        """
         # Texts to describe rollout cases for data and render
         rollout_cases = [
             ["ground_truth_rollout", "Reality"], ["predicted_rollout", "GNS"]]
@@ -85,12 +95,16 @@ class Render():
             self, point_size=1, timestep_stride=3, vertical_camera_angle=20, viewpoint_rotation=0.5
     ):
         """
-        Render `.gif` animation from `,pkl` trajectory.
-        :param point_size: particle size for visualization
-        :param timestep_stride: numer of timesteps to stride for visualization (i.e., sampling rate)
-        :param vertical_camera_angle: camera angle in airplane view in 3d render
-        :param viewpoint_rotation: speed of viewpoint rotation in 3d render
-        :return: gif format animation
+        Render `.gif` animation from `.pkl` trajectory data.
+
+        Args:
+            point_size (int): Size of particle in visualization
+            timestep_stride (int): Stride of steps to skip.
+            vertical_camera_angle (float): Vertical camera angle in degree
+            viewpoint_rotation (float): Viewpoint rotation in degree
+            
+        Returns:
+            None
         """
         # Init figures
         fig = plt.figure()
@@ -163,6 +177,9 @@ class Render():
         print(f"Animation saved to: {self.output_dir}{self.output_name}.gif")
 
     def write_vtk(self):
+        """
+        Write `.vtk` files for each timestep for each rollout case.
+        """
         for rollout_case, label in self.rollout_cases:
             path = f"{self.output_dir}{self.output_name}_vtk-{label}"
             if not os.path.exists(path):
