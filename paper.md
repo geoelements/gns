@@ -43,6 +43,7 @@ The GNS implementation uses semi-implicit Euler integration to update the state 
 Traditional numerical methods for solving differential equations are invaluable in scientific and engineering disciplines.  However, such simulators are computationally expensive and intractable for solving large-scale and complex inverse problems, multiphysics, and multi-scale mechanics.  Surrogate models trade off generality for accuracy in a narrow setting.  Recent growth in data availability has spurred data-driven machine learning (ML) models that train directly from observed data [@prume2022model].  ML models require significant training data to cover the large state space and complex dynamics.  Instead of ignoring the vast amount of structured prior knowledge (physics), we can exploit such knowledge to construct physics-informed ML algorithms with limited training data.  GNS uses static and inertial priors to learn the interactions between particles directly on graphs and can generalize with limited training data [@wu2020comprehensive;@velivckovic2017graph].  Graph-based GNS offer powerful data representations of real-world applications, including particulate systems, material sciences, drug discovery, astrophysics, and engineering [@sanchez2020learning;@battaglia2018relational].
 
 # State of the art
+Numerical methods, such as particle-based approaches or continuum strategies like Material Point Method [@soga2016] and the Finite Element Method, serve as valuable tools for modeling a wide array of real-world engineering systems. Despite their versatility, these traditional numerical methods often prove computationally intensive, restricting them to a handful of simulations. With the growth of material sciences and the escalating complexity of engineering challenges, there is a pressing need to navigate expansive parametric spaces and solve complex optimization and inverse analysis. However, the computational bottleneck inherent in traditional methods thwarts our ability to achieve innovative data-driven discoveries. A surrogate model presents a solution to this hurdle. However, most current neural network-based surrogates operate as black box algorithms, lacking physics and underperforming when extrapolation beyond training regions is needed. Consequently, there is a need to develop generalizable surrogate models based on physics to bridge this gap effectively.
 
 @sanchez2020learning developed a reference GNS implementation based on TensorFlow v1 [@tensorflow2015whitepaper].  Although the reference implementation runs both on CPU and GPU, it doesn't achieve multi-GPU scaling.  Furthermore, the dependence on TensorFlow v1 limits its ability to leverage features such as eager execution in TF v2.  We develop a scalable and modular GNS using PyTorch using the Distributed Data Parallel model to run on multi-GPU systems.
 
@@ -60,38 +61,13 @@ The Graph Network Simulator (GNS) uses PyTorch and PyTorch Geometric for constru
 
 # GNS training and prediction
 
-GNS models are trained on 1000s of particle trajectories from MPM (for sands) and Smooth Particle Hydrodynamics (for water) for 20 million steps. 
-
-## Dataset format
-
-We use the numpy `.npz` format for storing positional data for GNS training.  The `.npz` format includes a list of tuples of arbitrary length where each tuple corresponds to a differenet training trajectory and is of the form `(position, particle_type)`.  The data loader provides `INPUT_SEQUENCE_LENGTH` positions, set equal to six by default, to provide the GNS with the last `INPUT_SEQUENCE_LENGTH` minus one positions as input to predict the position at the next time step.  The `position` is a 3-D tensor of shape `(n_time_steps, n_particles, n_dimensions)` and `particle_type` is a 1-D tensor of shape `(n_particles)`.  
-
-The dataset contains:
-
-* Metadata file with dataset information `(sequence length, dimensionality, box bounds, default connectivity radius, statistics for normalization, ...)`:
-
-```
-{
-  "bounds": [[0.1, 0.9], [0.1, 0.9]], 
-  "sequence_length": 320, 
-  "default_connectivity_radius": 0.015, 
-  "dim": 2, 
-  "dt": 0.0025, 
-  "vel_mean": [5.123277536458455e-06, -0.0009965205918140803], 
-  "vel_std": [0.0021978993231675805, 0.0026653552458701774], 
-  "acc_mean": [5.237611158734309e-07, 2.3633027988858656e-07], 
-  "acc_std": [0.0002582944917306106, 0.00029554531667679154]
-}
-```
-* npz containing data for all trajectories `(particle types, positions, global context, ...)`:
-
-Training datasets for Sand, SandRamps, and WaterDropSample are available on [DesignSafe Data Depot](https://www.designsafe-ci.org/data/browser/public/designsafe.storage.published/PRJ-3702) [@vantassel2022gnsdata].
+GNS models are trained on 1000s of particle trajectories from MPM (for sands) and Smooth Particle Hydrodynamics (for water) for 20 million steps. GNS predicts the rollout trajectories of particles, based on its training of MPM particle simulations. We employ Taichi MPM [@hu2018mlsmpmcpic] to compute the particle trajectories. The input to GNS includes the velocity context for five timesteps. GNS computes the acceleration between the five timesteps using the timestep $\delta t$. GNS then rolls out the next states $\boldsymbol{X}_{i+5} \rightarrow, \ \ldots, \rightarrow \boldsymbol{X}_k$, where $\boldsymbol{X}$ is the set of particle positions. We use the `.npz` format to store the training data, which includes a list of tuples of arbitrary length where each tuple corresponds to a differenet training trajectory and is of the form `(position, particle_type)`. The position is a 3-D tensor of shape `(n_time_steps, n_particles, n_dimensions)` and particle_type is a 1-D tensor of shape `(n_particles)`.
 
 # Parallelization and scaling
 
-The GNS is parallelized to run across multiple GPUs using the PyTorch Distributed Data Parallel (DDP) model.  The DDP model spawns as many GNS models as the number of GPUs, distributing the dataset across all GPU nodes.  Consider, our training dataset with 20 simulations, each with 206 time steps of positional data $x_i$, which yields $(206 - 6) \times 20 = 4000$ training trajectories.  We subtract six position from the GNS training dataset as we utilize five previous velocities, computed from six positions, to predict the next position.  The 4000 training tajectories are subsequently distributed equally to the four GPUs (1000 training trajectories/GPU).  Assuming a batch size of 2, each GPU handles 500 trajectories in a batch.  The loss from the training trajectories are computed as
+The GNS is parallelized to run across multiple GPUs using the PyTorch Distributed Data Parallel (DDP) model.  The DDP model spawns as many GNS models as the number of GPUs, distributing the dataset across all GPU nodes.  Consider, our training dataset with 20 simulations, each with 206 time steps of positional data $x_i$, which yields $(206 - 6) \times 20 = 4000$ training trajectories.  We subtract six position from the GNS training dataset as we utilize five previous velocities, computed from six positions, to predict the next position.  The 4000 training tajectories are subsequently distributed equally to the four GPUs (1000 training trajectories/GPU).  Assuming a batch size of 2, each GPU handles 500 trajectories in a batch.  The loss from the training trajectories are computed as difference between accelerations of GNS prediction and actual trajectories. 
 
-$$f(\theta) = \frac{1}{n}\sum_{i=1}^n (GNS_\theta(x_t^i) - a_t^i)\,,$$
+$$f(\theta) = \frac{1}{n}\sum_{i=1}^n ((\ddot{x}_t^i)_{GNS} - (\ddot{x}_t^i)_{actual})\,,$$
 
 where $n$ is the number of particles (nodes) and $\theta$ is the learnable parameter in the GNS. In DDP, the gradient $\nabla (f(\theta))$ is computed as the average gradient across all GPUs as shown in \autoref{fig:gns-ddp}.
 

@@ -4,6 +4,7 @@ numpy==1.23.1
 dm-tree
 matplotlib
 pyevtk
+pytest
 torch
 torch_geometric
 torch_sparse
