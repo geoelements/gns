@@ -104,7 +104,7 @@ def rollout(
   return output_dict, loss
 
 
-def predict(device: str, FLAGS):
+def predict(device: str, FLAGS, flags, world_size):
   """Predict rollouts.
 
   Args:
@@ -118,8 +118,7 @@ def predict(device: str, FLAGS):
   if os.path.exists(FLAGS.model_path + FLAGS.model_file):
     simulator.load(FLAGS.model_path + FLAGS.model_file)
   else:
-    train(simulator)
-  
+    train(simulator, flags, world_size)
   simulator.to(device)
   simulator.eval()
 
@@ -378,10 +377,11 @@ def main(_):
 
   elif FLAGS.mode in ['valid', 'rollout']:
     # Set device
+    world_size = torch.cuda.device_count()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
       device = torch.device(f'cuda:{int(FLAGS.cuda_device_number)}')
-    predict(device, FLAGS)
+    predict(device, FLAGS, flags=myflags, world_size=world_size)
 
 if __name__ == '__main__':
   app.run(main)
