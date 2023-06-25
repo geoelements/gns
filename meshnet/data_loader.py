@@ -51,7 +51,7 @@ class SamplesDataset(torch.utils.data.Dataset):
         pressure = self._data[trajectory_idx]["pressure"][time_idx - 1]  # (nnode, 1)
         cells = self._data[trajectory_idx]["cells"][time_idx - 1]  # (ncells, nnode_per_cell)
         cells = np.transpose(cells, (1, 0))
-        time_idx_vector = np.full(positions.shape[0], time_idx)  # (nnode, )
+        time_idx_vector = np.full(positions.shape[0], time_idx - 1)  # (nnode, )
         time_vector = time_idx_vector * self._dt  # (nnodes, )
         time_vector = np.reshape(time_vector, (time_vector.size, 1))  # (nnodes, 1)
 
@@ -88,7 +88,6 @@ class TrajectoriesDataset(torch.utils.data.Dataset):
         # may (and likely is) variable between data
         self._dimension = self._data[0]["pos"].shape[-1]
         self._length = len(self._data)
-        a = 1
 
     def __len__(self):
         return self._length

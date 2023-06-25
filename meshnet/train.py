@@ -138,9 +138,9 @@ def rollout(simulator: learned_simulator.MeshSimulator,
             mask = torch.logical_or(current_node_type == NodeType.NORMAL, current_node_type == NodeType.OUTFLOW)
             mask = torch.logical_not(mask)
             mask = mask.squeeze(1)
-            # Maintain previous velocity if node_type is not (Normal or Outflow).
-            # i.e., only update normal or outflow nodes.
-            predicted_next_velocity[mask] = next_ground_truth_velocities[mask]
+        # Maintain previous velocity if node_type is not (Normal or Outflow).
+        # i.e., only update normal or outflow nodes.
+        predicted_next_velocity[mask] = next_ground_truth_velocities[mask]
         predictions.append(predicted_next_velocity)
 
         # Update current position for the next prediction
@@ -292,7 +292,7 @@ def main(_):
         nnode_in=11,
         nedge_in=3,
         latent_dim=128,
-        nmessage_passing_steps=10,
+        nmessage_passing_steps=15,
         nmlp_layers=2,
         mlp_hidden_dim=128,
         nnode_types=3,

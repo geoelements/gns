@@ -47,8 +47,10 @@ class MeshSimulator(nn.Module):
             nmlp_layers=nmlp_layers,
             mlp_hidden_dim=mlp_hidden_dim)
 
-        self._output_normalizer = normalization.Normalizer(size=2, name='output_normalizer', device=device)
-        self._node_normalizer = normalization.Normalizer(size=nnode_in, name='node_normalizer', device=device)
+        self._output_normalizer = normalization.Normalizer(
+            size=simulation_dimensions, name='output_normalizer', device=device)
+        self._node_normalizer = normalization.Normalizer(
+            size=nnode_in, name='node_normalizer', device=device)
         self._device = device
 
     def forward(self):
