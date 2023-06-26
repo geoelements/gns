@@ -53,7 +53,9 @@ In particulate domain, the renderer also writes `.vtu` files to visualize in Par
 > GNS prediction of Sand rollout after training for 2 million steps.
 
 In mesh-based domain, the renderer writes `.gif` animation.
+
 ![Fluid flow rollout](docs/img/meshnet.gif)
+> Meshnet GNS prediction of cylinder flow after training for 1 million steps.
 
 ## Datasets
 ### Particulate domain:
