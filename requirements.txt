@@ -5,7 +5,7 @@ dm-tree
 matplotlib
 pyevtk
 pytest
-torch
+torch==1.13.1
 torch_geometric
 torch_sparse
 torch_scatter
