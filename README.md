@@ -14,7 +14,10 @@ Graph Network-based Simulator (GNS) is a framework for developing generalizable,
 ## Run GNS
 > Training GNS on data
 ```shell
+# For particulate domain,
 python3 -m gns.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" -ntraining_steps=100
+# For mesh-based domain,
+python3 -m meshnet.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" -ntraining_steps=100
 ```
 
 > Resume training
@@ -22,26 +25,40 @@ python3 -m gns.train --data_path="<input-training-data-path>" --model_path="<pat
 To resume training specify `model_file` and `train_state_file`:
 
 ```shell
+# For particulate domain,
 python3 -m gns.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>"  --model_file="model.pt" --train_state_file="train_state.pt" -ntraining_steps=100
+# For mesh-based domain,
+python3 -m meshnet.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>"  --model_file="model.pt" --train_state_file="train_state.pt" -ntraining_steps=100
 ```
 
 > Rollout prediction
 ```shell
+# For particulate domain,
 python3 -m gns.train --mode="rollout" --data_path="<input-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" --model_file="model.pt" --train_state_file="train_state.pt"
+# For mesh-based domain,
+python3 -m meshnet.train --mode="rollout" --data_path="<input-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" --model_file="model.pt" --train_state_file="train_state.pt"
 ```
 
 > Render
 ```shell
-python3 -m gns.render_rollout --output_mode="gif" --rollout_dir="<path-containing-rollout-file>" --rollout_name="rollout_0"
+# For particulate domain,
+python3 -m gns.render_rollout --output_mode="gif" --rollout_dir="<path-containing-rollout-file>" --rollout_name="<name-of-rollout-file>"
+# For mesh-based domain,
+python3 -m gns.render --rollout_dir="<path-containing-rollout-file>" --rollout_name="<name-of-rollout-file>"
 ```
 
-The renderer also writes `.vtu` files to visualize in ParaView.
+In particulate domain, the renderer also writes `.vtu` files to visualize in ParaView.
 
 ![Sand rollout](docs/img/rollout_0.gif)
 > GNS prediction of Sand rollout after training for 2 million steps.
 
-## Datasets
+In mesh-based domain, the renderer writes `.gif` animation.
 
+![Fluid flow rollout](docs/img/meshnet.gif)
+> Meshnet GNS prediction of cylinder flow after training for 1 million steps.
+
+## Datasets
+### Particulate domain:
 We use the numpy `.npz` format for storing positional data for GNS training.  The `.npz` format includes a list of tuples of arbitrary length where each tuple corresponds to a differenet training trajectory and is of the form `(position, particle_type)`.  The data loader provides `INPUT_SEQUENCE_LENGTH` positions, set equal to six by default, to provide the GNS with the last `INPUT_SEQUENCE_LENGTH` minus one positions as input to predict the position at the next time step.  The `position` is a 3-D tensor of shape `(n_time_steps, n_particles, n_dimensions)` and `particle_type` is a 1-D tensor of shape `(n_particles)`.  
 
 The dataset contains:
@@ -70,7 +87,15 @@ We provide the following datasets:
   * `Sand`
   * `SandRamps`
 
-Download the dataset from [DesignSafe DataDepot](https://doi.org/10.17603/ds2-0phb-dg64). If you are using this dataset please cite [Vantassel and Kumar., 2022](https://github.com/geoelements/gns#dataset)
+Download the dataset [DesignSafe DataDepot](https://doi.org/10.17603/ds2-0phb-dg64). If you are using this dataset please cite [Vantassel and Kumar., 2022](https://github.com/geoelements/gns#dataset)
+
+### Mesh-based domain:
+We also use the numpy `.npz` format for storing data for training meshnet GNS.
+
+The dataset contains:
+* npz containing python dictionary describing mesh data and relevant dynamics at mesh nodes for all trajectories. The dictionary includes `{pos: (nnodes, ndims), node_type: (nnodes, ntypes), velocity: (nnodes, ndims), pressure: (nnodes, 1), cells: (ncells, 3)}`
+
+The dataset is shared on [DesignSafe DataDepot](https://doi.org/10.17603/ds2-fzg7-1719). If you are using this dataset please cite [Kumar and Choi., 2023](https://github.com/geoelements/gns#dataset)
 
 ## Installation
 
@@ -92,7 +117,10 @@ source start_venv.sh
 ```
 
 ### Inspiration
-PyTorch version of Graph Network Simulator based on [https://arxiv.org/abs/2002.09405](https://arxiv.org/abs/2002.09405) and [https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate](https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate).
+PyTorch version of Graph Network Simulator and Mesh Graph Network Simulator are based on:
+* [https://arxiv.org/abs/2002.09405](https://arxiv.org/abs/2002.09405) and [https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate](https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate)
+* [https://arxiv.org/abs/2010.03409](https://arxiv.org/abs/2002.09405) and [https://github.com/deepmind/deepmind-research/tree/master/meshgraphnets](https://github.com/deepmind/deepmind-research/tree/master/meshgraphnets)
+* [https://github.com/echowve/meshGraphNets_pytorch](https://github.com/echowve/meshGraphNets_pytorch)
 
 ### Acknowledgement
 This code is based upon work supported by the National Science Foundation under Grant OAC-2103937.
@@ -103,4 +131,5 @@ This code is based upon work supported by the National Science Foundation under 
 Kumar, K., & Vantassel, J. (2022). Graph Network Simulator: v1.0.1 (Version v1.0.1) [Computer software]. https://doi.org/10.5281/zenodo.6658322
 
 #### Dataset
-Vantassel, Joseph; Kumar, Krishna (2022) “Graph Network Simulator Datasets.” DesignSafe-CI. https://doi.org/10.17603/ds2-0phb-dg64 v1 
+* Vantassel, Joseph; Kumar, Krishna (2022) “Graph Network Simulator Datasets.” DesignSafe-CI. https://doi.org/10.17603/ds2-0phb-dg64 v1 
+* Kumar, K., Y. Choi. (2023) "Cylinder flow with graph neural network-based simulator." DesignSafe-CI. https://doi.org/10.17603/ds2-fzg7-1719

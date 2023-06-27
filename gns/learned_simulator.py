@@ -94,7 +94,7 @@ class LearnedSimulator(nn.Module):
     # radius_graph accepts r < radius not r <= radius
     # A torch tensor list of source and target nodes with shape (2, nedges)
     edge_index = radius_graph(
-        node_features, r=radius, batch=batch_ids, loop=add_self_edges)
+        node_features, r=radius, batch=batch_ids, loop=add_self_edges, max_num_neighbors=128)
 
     # The flow direction when using in combination with message passing is
     # "source_to_target"
