@@ -109,6 +109,7 @@ GNS uses [pytorch geometric](https://www.pyg.org/) and [CUDA](https://developer.
 ```shell
 conda install pytorch torchvision torchaudio cpuonly -c pytorch
 conda install pyg -c pyg
+conda install -c anaconda absl-py 
 conda install -c conda-forge numpy dm-tree matplotlib-base pyevtk
 ```
 You can use the [WaterDropletSample](https://github.com/geoelements/gns-sample) dataset to check if your `gns` code is working correctly.
