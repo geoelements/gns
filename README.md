@@ -102,7 +102,16 @@ The dataset is shared on [DesignSafe DataDepot](https://doi.org/10.17603/ds2-fzg
 
 ## Installation
 
-GNS uses [pytorch geometric](https://www.pyg.org/) and [CUDA](https://developer.nvidia.com/cuda-downloads). These packages have specific requirements, please see [PyG installation]((https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html) for details. After installing the above, the remaining requirements can be installed with `pip install -r requirements.txt`
+GNS uses [pytorch geometric](https://www.pyg.org/) and [CUDA](https://developer.nvidia.com/cuda-downloads). These packages have specific requirements, please see [PyG installation]((https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html) for details. 
+
+> CPU-only installation on Linux
+
+```shell
+conda install pytorch torchvision torchaudio cpuonly -c pytorch
+conda install pyg -c pyg
+conda install -c conda-forge numpy dm-tree matplotlib-base pyevtk
+```
+You can use the [WaterDropletSample](https://github.com/geoelements/gns-sample) dataset to check if your `gns` code is working correctly.
 
 ### Building GNS environment on TACC (LS6 and Frontera)
 
