@@ -12,7 +12,7 @@ jobs:
             TMP_DIR="./gns-sample"
             DATASET_NAME="WaterDropSample"
             git clone https://github.com/geoelements/gns-sample.git 
-            DATA_PATH="${TMP_DIR}/${DATASET_NAME}/datasets/"
+            DATA_PATH="${TMP_DIR}/${DATASET_NAME}/dataset/"
             MODEL_PATH="${TMP_DIR}/${DATASET_NAME}/models/"
             mkdir -p ${TMP_DIR}/${DATASET_NAME}/models/
             conda install -c anaconda absl-py -y
