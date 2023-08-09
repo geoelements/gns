@@ -12,9 +12,11 @@ jobs:
             TMP_DIR="./gns-sample"
             DATASET_NAME="WaterDropSample"
             git clone https://github.com/geoelements/gns-sample.git 
+            mkdir -p ${TMP_DIR}/${DATASET_NAME}/models/
+            mkdir -p ${TMP_DIR}/${DATASET_NAME}/rollout/
             DATA_PATH="${TMP_DIR}/${DATASET_NAME}/dataset/"
             MODEL_PATH="${TMP_DIR}/${DATASET_NAME}/models/"
-            mkdir -p ${TMP_DIR}/${DATASET_NAME}/models/
+            ROLLOUT_PATH=${TMP_DIR}/${DATASET_NAME}/rollout/"
             conda install -c anaconda absl-py -y
             conda install -c conda-forge numpy -y
             conda install -c conda-forge dm-tree -y
@@ -25,6 +27,8 @@ jobs:
             echo "Test paths: ${DATA_PATH} ${MODEL_PATH}"
             ls
             python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10
+            echo "Predict rollout"
+            python3 -m gns.train --mode="rollout" --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --output_path=${ROLLOUT_PATH} --model_file="model.pt" --train_state_file="train_state.pt"
 
 workflows:
     version: 2
