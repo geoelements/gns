@@ -96,7 +96,7 @@ Download the dataset [DesignSafe DataDepot](https://doi.org/10.17603/ds2-0phb-dg
 We also use the numpy `.npz` format for storing data for training meshnet GNS.
 
 The dataset contains:
-* npz containing python dictionary describing mesh data and relevant dynamics at mesh nodes for all trajectories. The dictionary includes `{pos: (nnodes, ndims), node_type: (nnodes, ntypes), velocity: (nnodes, ndims), pressure: (nnodes, 1), cells: (ncells, 3)}`
+* npz containing python dictionary describing mesh data and relevant dynamics at mesh nodes for all trajectories. The dictionary includes `{pos: (ntimestep, nnodes, ndims), node_type: (ntimestep, nnodes, ntypes), velocity: (ntimestep, nnodes, ndims), pressure: (ntimestep, nnodes, 1), cells: (ntimestep, ncells, 3)}`
 
 The dataset is shared on [DesignSafe DataDepot](https://doi.org/10.17603/ds2-fzg7-1719). If you are using this dataset please cite [Kumar and Choi., 2023](https://github.com/geoelements/gns#dataset)
 
