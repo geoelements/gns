@@ -320,7 +320,8 @@ def train(rank, flags, world_size):
     train_state = dict(optimizer_state=optimizer.state_dict(), global_train_state={"step":step})
     torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
 
-  distribute.cleanup()
+  if torch.cuda.is_available():
+    distribute.cleanup()
 
 
 def _get_simulator(
@@ -391,27 +392,28 @@ def main(_):
   myflags["model_path"] = FLAGS.model_path
   myflags["train_state_file"] = FLAGS.train_state_file
 
-  if device == torch.device('cuda'):
-    if FLAGS.mode == 'train':
-      # If model_path does not exist create new directory.
-      if not os.path.exists(FLAGS.model_path):
-        os.makedirs(FLAGS.model_path)
+  if FLAGS.mode == 'train':
+    # If model_path does not exist create new directory.
+    if not os.path.exists(FLAGS.model_path):
+      os.makedirs(FLAGS.model_path)
 
+    # Train on gpu 
+    if device == torch.device('cuda'):
       world_size = torch.cuda.device_count()
       print(f"world_size = {world_size}")
       distribute.spawn_train(train, myflags, world_size)
 
-    elif FLAGS.mode in ['valid', 'rollout']:
-      # Set device
-      world_size = torch.cuda.device_count()
-      if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
-        device = torch.device(f'cuda:{int(FLAGS.cuda_device_number)}')
-      predict(device, FLAGS, flags=myflags, world_size=world_size)
-
-  if device == torch.device('cpu'):
-    if FLAGS.mode == 'train':
+    # Train on cpu  
+    else:
       world_size = 1
       train(device, myflags, world_size)
+
+  elif FLAGS.mode in ['valid', 'rollout']:
+    # Set device
+    world_size = torch.cuda.device_count()
+    if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
+      device = torch.device(f'cuda:{int(FLAGS.cuda_device_number)}')
+    predict(device, FLAGS, flags=myflags, world_size=world_size)
 
 
 if __name__ == '__main__':
