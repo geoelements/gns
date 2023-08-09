@@ -12,8 +12,9 @@ jobs:
             TMP_DIR="./gns-sample"
             DATASET_NAME="WaterDropSample"
             git clone https://github.com/geoelements/gns-sample.git 
-            DATA_PATH="${TMP_DIR}/${DATASET_NAME}/datasets/"
+            DATA_PATH="${TMP_DIR}/${DATASET_NAME}/dataset/"
             MODEL_PATH="${TMP_DIR}/${DATASET_NAME}/models/"
+            mkdir -p ${TMP_DIR}/${DATASET_NAME}/models/
             conda install -c anaconda absl-py -y
             conda install -c conda-forge numpy -y
             conda install -c conda-forge dm-tree -y
@@ -21,7 +22,9 @@ jobs:
             conda install -c conda-forge pyevtk -y
             conda install -c conda-forge pytest -y
             pytest test/
-            python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10 --mode='train'
+            echo "Test paths: ${DATA_PATH} ${MODEL_PATH}"
+            ls
+            python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10
 
 workflows:
     version: 2
