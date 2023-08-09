@@ -16,7 +16,7 @@ jobs:
             mkdir -p ${TMP_DIR}/${DATASET_NAME}/rollout/
             DATA_PATH="${TMP_DIR}/${DATASET_NAME}/dataset/"
             MODEL_PATH="${TMP_DIR}/${DATASET_NAME}/models/"
-            ROLLOUT_PATH=${TMP_DIR}/${DATASET_NAME}/rollout/"
+            ROLLOUT_PATH="${TMP_DIR}/${DATASET_NAME}/rollout/"
             conda install -c anaconda absl-py -y
             conda install -c conda-forge numpy -y
             conda install -c conda-forge dm-tree -y
