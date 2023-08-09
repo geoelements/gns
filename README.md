@@ -109,6 +109,7 @@ GNS uses [pytorch geometric](https://www.pyg.org/) and [CUDA](https://developer.
 ```shell
 conda install pytorch torchvision torchaudio cpuonly -c pytorch
 conda install pyg -c pyg
+conda install pytorch-cluster -c pyg
 conda install -c anaconda absl-py 
 conda install -c conda-forge numpy dm-tree matplotlib-base pyevtk
 ```
