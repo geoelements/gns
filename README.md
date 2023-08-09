@@ -114,6 +114,31 @@ conda install -c conda-forge numpy dm-tree matplotlib-base pyevtk
 ```
 You can use the [WaterDropletSample](https://github.com/geoelements/gns-sample) dataset to check if your `gns` code is working correctly.
 
+To test the code you can run:
+
+```
+pytest test/
+```
+
+To test on the small waterdroplet sample:
+
+```
+git clone https://github.com/geoelements/gns-sample
+
+TMP_DIR="./gns-sample"
+DATASET_NAME="WaterDropSample"
+
+mkdir -p ${TMP_DIR}/${DATASET_NAME}/models/
+mkdir -p ${TMP_DIR}/${DATASET_NAME}/rollout/
+
+DATA_PATH="${TMP_DIR}/${DATASET_NAME}/dataset/"
+MODEL_PATH="${TMP_DIR}/${DATASET_NAME}/models/"
+ROLLOUT_PATH="${TMP_DIR}/${DATASET_NAME}/rollout/"
+
+python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10
+```
+
+
 ### Building GNS environment on TACC (LS6 and Frontera)
 
 - to setup a virtualenv
