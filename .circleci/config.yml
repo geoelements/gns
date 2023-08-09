@@ -28,9 +28,8 @@ jobs:
             ls
             python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10
             echo "Predict rollout"
-            ls ${TMP_DIR}/${DATASET_NAME}/models/
-            python3 -m gns.train --mode="rollout" --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --output_path=${ROLLOUT_PATH} --model_file="model.pt" --train_state_file="train_state.pt"
-
+            ls ./gns-sample/WaterDropSample/models/
+            
 
 workflows:
     version: 2
