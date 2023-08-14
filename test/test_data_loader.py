@@ -21,9 +21,18 @@ def temp_dir():
 def dummy_data(temp_dir):
     # Create a dummy dataset
     dummy_data = [(np.random.rand(10, 3, 2), i % 3) for i in range(5)]
+    
+    # Create structured array to hold the data
+    structured_data = np.empty(len(dummy_data), dtype=object)
+    for i, item in enumerate(dummy_data):
+        structured_data[i] = item
+
+    # Save the data
     data_path = os.path.join(temp_dir, 'data.npz')
-    np.savez(data_path, *dummy_data)
+    np.savez(data_path, gns_data=structured_data)
+
     return data_path, dummy_data
+
 
 def test_samples_dataset(dummy_data):
     data_path, _ = dummy_data
@@ -36,6 +45,7 @@ def test_samples_dataset(dummy_data):
         assert particle_type.shape == (3,)  # Check particle_type shape
         assert n_particles_per_example == 3  # Check number of particles per example
         assert label.shape == (3, 2)  # Check label shape
+
 
 def test_trajectories_dataset(dummy_data):
     data_path, _ = dummy_data
