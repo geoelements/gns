@@ -1,6 +1,25 @@
 import torch
 import numpy as np
 
+def load_npz_data(path):
+    """Load data stored in npz format.
+    
+    The file format for Python 3.9 or less supports ragged arrays and Python 3.10
+    requires a structured array. This function supports both formats.
+
+    Args:
+        path (str): Path to npz file.
+    
+    Returns:
+        data (list): List of tuples of the form (positions, particle_type).
+    """
+    with np.load(path, allow_pickle=True) as data_file:
+        if 'gns_data' in data_file:
+            data = data_file['gns_data']
+        else:
+            data = [item for _, item in data_file.items()]
+    return data
+
 class SamplesDataset(torch.utils.data.Dataset):
     """Dataset of samples of trajectories.
     
@@ -27,7 +46,7 @@ class SamplesDataset(torch.utils.data.Dataset):
         # of the form (positions, particle_type)
         # convert to list of tuples
         # TODO: allow_pickle=True is potential security risk. See docs.
-        self._data = [item for _, item in np.load(path, allow_pickle=True).items()]
+        self._data = load_npz_data(path)
         
         # length of each trajectory in the dataset
         # excluding the input_length_sequence
@@ -105,6 +124,7 @@ def collate_fn(data):
         torch.tensor(np.vstack(label_list)).to(torch.float32).contiguous()
         )
 
+
 class TrajectoriesDataset(torch.utils.data.Dataset):
     """Dataset of trajectories.
 
@@ -118,7 +138,7 @@ class TrajectoriesDataset(torch.utils.data.Dataset):
         # of the form (positions, particle_type)
         # convert to list of tuples
         # TODO (jpv): allow_pickle=True is potential security risk. See docs.
-        self._data = [item for _, item in np.load(path, allow_pickle=True).items()]
+        self._data = load_npz_data(path)
         self._dimension = self._data[0][0].shape[-1]
         self._length = len(self._data)
 
@@ -148,6 +168,7 @@ class TrajectoriesDataset(torch.utils.data.Dataset):
             torch.tensor(particle_type).contiguous(), 
             n_particles_per_example
         )
+
 
 
 def get_data_loader_by_samples(path, input_length_sequence, batch_size, shuffle=True):
