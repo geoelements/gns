@@ -7,8 +7,8 @@ authors:
   - family-names: Vantassel
     given-names: Joseph
     orcid: https://orcid.org/0000-0002-1601-3354      
-title: "Graph Network Simulator: v1.1.0"
-version: v1.1.0
+title: "GNS: A generalizable Graph Neural Network-based simulator for particulate and fluid modeling"
+version: v1.1.1
 doi: 10.5281/zenodo.8249671
 date-released: 2023-08-15
 url: "https://github.com/geoelements/gns"
