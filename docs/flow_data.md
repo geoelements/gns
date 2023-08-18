@@ -24,7 +24,7 @@ simulation_data = {
 }
 ```
 
-# About `pos`
+## `pos`
 `pos` contains a numpy array that describes positions of mesh nodes for each 
 timesteps with `shape=(ntimestep, nnodes, ndims)`. If the position of 
 the nodes does not change over time, the model can accept `shape=(1, nnodes, ndims)`, 
@@ -54,7 +54,7 @@ array([[[px0_t0, py0_t0],  # at t=0
 ```
 
 
-# About `node_type`
+## `node_type`
 `node_type` contains a numpy array that describes whether a node is one of the following types:
 
 * Normal nodes (=0)
@@ -96,7 +96,7 @@ array([[[4],  # at t=0
         [5]]], shape=(100, 18, 1))
 ```
 
-# About `velocity`
+## `velocity`
 `velocity` contains the velocity information at each timestep with shape = `shape=(ntimestep, nnodes, ndims)`. The index of the array should follow what is defined in `pos`.
 
 In our example, 
@@ -121,7 +121,7 @@ array([[[vx0_t0, vy0_t0],  # at t=0
         [vx17_t99, vy17_t99]]], shape=(100, 18, 2))
 ```
 
-# About `cells`
+## `cells`
 `cells` contains a numpy array that defines the group of node indices that constructs a cell. 
 
 In our example, `cells` array looks like,
@@ -141,17 +141,17 @@ array([[[0, 1, 7, 6],  # at t=0
         [10, 11, 17, 16]]], shape=(100, 10, 4))
 ```
 
-# Additional Data (optional)
+## Additional Data (optional)
 If one wish to construct additional features, the feature like `pressure` can be added.
 
-# Example
+## Example
 ![mesh](./img/mesh_ex.png)
 *Figure 1. An example mesh. There are time independent 18 nodes and 10 cells. The yellow nodes are inlet nodes (`node_type=4`), red nodes are wall nodes (`node_type=6`), blue nodes are normal  nodes (`node_type=0`), and green nodes (`node_type=5`) are outlet nodes.*
 
 ![flow](./img/flow.png)
 *Figure 2. An example for full simulation.*
 
-# Save and load
+## Save and load
 Once the python dictionary is ready, the following lines saves the entire dictionary in a compressed format (`.npz`).
 ```python
 import numpy as np
