@@ -296,11 +296,11 @@ def train(rank, flags, world_size):
         for param in optimizer.param_groups:
           param['lr'] = lr_new
 
-        if rank == 0 or torch.device("cpu"):
+        if rank == 0 or rank == torch.device("cpu"):
           print(f'Training step: {step}/{flags["ntraining_steps"]}. Loss: {loss}.')
           # Save model state
           if step % flags["nsave_steps"] == 0:
-            if torch.device("cpu"):
+            if rank == torch.device("cpu"):
               simulator.save(flags["model_path"] + 'model-'+str(step)+'.pt')
             else:
               simulator.module.save(flags["model_path"] + 'model-'+str(step)+'.pt')
@@ -317,8 +317,8 @@ def train(rank, flags, world_size):
   except KeyboardInterrupt:
     pass
 
-  if rank == 0 or torch.device("cpu"):
-    if torch.device("cpu"):
+  if rank == 0 or rank == torch.device("cpu"):
+    if rank == torch.device("cpu"):
       simulator.save(flags["model_path"] + 'model-'+str(step)+'.pt')
     else:
       simulator.module.save(flags["model_path"] + 'model-'+str(step)+'.pt')
