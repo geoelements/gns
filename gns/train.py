@@ -304,7 +304,9 @@ def train(rank, flags, world_size):
               simulator.save(flags["model_path"] + 'model-'+str(step)+'.pt')
             else:
               simulator.module.save(flags["model_path"] + 'model-'+str(step)+'.pt')
-            train_state = dict(optimizer_state=optimizer.state_dict(), global_train_state={"step":step})
+            train_state = dict(optimizer_state=optimizer.state_dict(),
+                               global_train_state={"step": step},
+                               loss=loss.item())
             torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
 
         # Complete training
@@ -322,7 +324,9 @@ def train(rank, flags, world_size):
       simulator.save(flags["model_path"] + 'model-'+str(step)+'.pt')
     else:
       simulator.module.save(flags["model_path"] + 'model-'+str(step)+'.pt')
-    train_state = dict(optimizer_state=optimizer.state_dict(), global_train_state={"step":step})
+    train_state = dict(optimizer_state=optimizer.state_dict(),
+                       global_train_state={"step": step},
+                       loss=loss.item())
     torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
 
   if torch.cuda.is_available():
