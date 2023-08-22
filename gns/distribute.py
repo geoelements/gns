@@ -3,7 +3,7 @@ from torch.utils.data.distributed import DistributedSampler
 
 from gns import data_loader
 
-def setup(rank, world_size):
+def setup(rank, world_size, device):
     """Initializes distributed training.
     
     Args:
@@ -23,19 +23,20 @@ def cleanup():
     torch.distributed.destroy_process_group()
 
 
-def spawn_train(train_fxn, flags, world_size):
+def spawn_train(train_fxn, flags, world_size, device):
     """Spawns distributed training.
     
     Args:
         train_fxn (function): Function to train model.
         flags (dict): Dictionary of flags.
         world_size (int): Number of processes.
+        device (torch.device): torch device type
     """
     torch.multiprocessing.spawn(train_fxn,
-                                args=(flags, world_size),
+                                args=(flags, world_size, device),
                                 nprocs=world_size,
                                 join=True
-                               )
+                                )
 
 
 def get_data_distributed_dataloader_by_samples(path, input_length_sequence, batch_size, shuffle=True):
