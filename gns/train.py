@@ -182,6 +182,9 @@ def train(rank, flags, world_size, device):
   """
   if device == torch.device("cuda"):
     distribute.setup(rank, world_size, device)
+    device_id = rank
+  else:
+    device_id = device
 
   metadata = reading_utils.read_metadata(flags["data_path"])
 
@@ -223,7 +226,7 @@ def train(rank, flags, world_size, device):
       optimizer = torch.optim.Adam(
         simulator.module.parameters() if device == torch.device("cuda") else simulator.parameters())
       optimizer.load_state_dict(train_state["optimizer_state"])
-      optimizer_to(optimizer, rank if device == torch.device("cuda") else device)
+      optimizer_to(optimizer, device_id)
       # set global train state
       step = train_state["global_train_state"].pop("step")
 
@@ -232,7 +235,7 @@ def train(rank, flags, world_size, device):
       raise FileNotFoundError(msg)
 
   simulator.train()
-  simulator.to(rank if device == torch.device("cuda") else device)
+  simulator.to(device_id)
 
   if device == torch.device("cuda"):
     dl = distribute.get_data_distributed_dataloader_by_samples(path=f'{flags["data_path"]}train.npz',
@@ -254,15 +257,15 @@ def train(rank, flags, world_size, device):
       else:
         pass
       for ((position, particle_type, n_particles_per_example), labels) in dl:
-        position.to(rank if device == torch.device("cuda") else device)
-        particle_type.to(rank if device == torch.device("cuda") else device)
-        n_particles_per_example.to(rank if device == torch.device("cuda") else device)
-        labels.to(rank if device == torch.device("cuda") else device)
+        position.to(device_id)
+        particle_type.to(device_id)
+        n_particles_per_example.to(device_id)
+        labels.to(device_id)
 
         # TODO (jpv): Move noise addition to data_loader
         # Sample the noise to add to the inputs to the model during training.
-        sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(position, noise_std_last_step=flags["noise_std"]).to(rank if device == torch.device("cuda") else device)
-        non_kinematic_mask = (particle_type != KINEMATIC_PARTICLE_ID).clone().detach().to(rank if device == torch.device("cuda") else device)
+        sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(position, noise_std_last_step=flags["noise_std"]).to(device_id)
+        non_kinematic_mask = (particle_type != KINEMATIC_PARTICLE_ID).clone().detach().to(device_id)
         sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
 
         # Get the predictions and target accelerations.
