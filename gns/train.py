@@ -184,6 +184,7 @@ def train(rank, flags, world_size, device):
     distribute.setup(rank, world_size, device)
 
   metadata = reading_utils.read_metadata(flags["data_path"])
+  metadata = metadata["train"]
 
   if device == torch.device("cuda"):
     serial_simulator = _get_simulator(metadata, flags["noise_std"], flags["noise_std"], rank)
