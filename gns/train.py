@@ -9,6 +9,7 @@ import sys
 import numpy as np
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
+from tqdm import tqdm
 
 from absl import flags
 from absl import app
@@ -40,6 +41,7 @@ flags.DEFINE_float('lr_decay', 0.1, help='Learning rate decay.')
 flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps.')
 
 flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
+FLAGS = flags.FLAGS
 
 Stats = collections.namedtuple('Stats', ['mean', 'std'])
 
@@ -47,71 +49,109 @@ INPUT_SEQUENCE_LENGTH = 6  # So we can calculate the last 5 velocities.
 NUM_PARTICLE_TYPES = 9
 KINEMATIC_PARTICLE_ID = 3
 
+
 def rollout(
         simulator: learned_simulator.LearnedSimulator,
-        position: torch.tensor,
-        particle_types: torch.tensor,
+        initial_positions: torch.tensor,
+        particle_type: torch.tensor,
         n_particles_per_example: torch.tensor,
         nsteps: int,
-        device):
-  """Rolls out a trajectory by applying the model in sequence.
+        ground_truth_positions: torch.tensor,
+        device: str,
+        eval: bool = True,
+        checkpoint_interval=1):
 
-  Args:
-    simulator: Learned simulator.
-    features: Torch tensor features.
-    nsteps: Number of steps.
   """
-  initial_positions = position[:, :INPUT_SEQUENCE_LENGTH]
-  ground_truth_positions = position[:, INPUT_SEQUENCE_LENGTH:]
+  Rollout with gradient checkpointing to reduce memory accumulation over the forward steps.
+  Args:
+    simulator: learned_simulator
+    initial_positions: initial positions of particles for 6 timesteps with shape=(nparticles, 6, ndims).
+    particle_type: particle types shape=(nparticles, ).
+    n_particles_per_example: number of particles.
+    ground_truth_positions: positions of particles which is considered true with shape=(nparticles, timesteps, ndims)
+    nsteps: number of forward steps to roll out.
+    eval: rollout mode. If eval is true, the rollout evaluates the loss and does not track gradient
+    checkpoint_interval: If eval is false, the rollout tracks gradients and
+      use gradient checkpointing to reduce the memory accumulation over the forward steps.
+      The `checkpoint_interval` controls the frequency of the gradient checkpoint.
+
+  Returns:
+
+  """
 
   current_positions = initial_positions
   predictions = []
 
-  for step in range(nsteps):
-    # Get next position with shape (nnodes, dim)
-    next_position = simulator.predict_positions(
-        current_positions,
-        nparticles_per_example=[n_particles_per_example],
-        particle_types=particle_types,
-    )
+  if not eval:
+    for step in tqdm(range(nsteps), total=nsteps):
+      if step % checkpoint_interval == 0:
+        next_position = torch.utils.checkpoint.checkpoint(
+          simulator.predict_positions,
+          current_positions,
+          [n_particles_per_example],
+          particle_type
+        )
+      else:
+        next_position = simulator.predict_positions(
+          current_positions,
+          [n_particles_per_example],
+          particle_type
+        )
 
-    # Update kinematic particles from prescribed trajectory.
-    kinematic_mask = (particle_types == KINEMATIC_PARTICLE_ID).clone().detach().to(device)
-    next_position_ground_truth = ground_truth_positions[:, step]
-    kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, current_positions.shape[-1])
-    next_position = torch.where(
+      # Update kinematic particles from prescribed trajectory.
+      kinematic_mask = (particle_type == KINEMATIC_PARTICLE_ID).clone().detach().to(device)
+      next_position_ground_truth = ground_truth_positions[:, 0]  # use the first position data over all prediction
+      kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, current_positions.shape[-1])
+      next_position = torch.where(
         kinematic_mask, next_position_ground_truth, next_position)
-    predictions.append(next_position)
+      predictions.append(next_position)
 
-    # Shift `current_positions`, removing the oldest position in the sequence
-    # and appending the next position at the end.
-    current_positions = torch.cat(
+      # Shift `current_positions`, removing the oldest position in the sequence
+      # and appending the next position at the end.
+      current_positions = torch.cat(
         [current_positions[:, 1:], next_position[:, None, :]], dim=1)
 
-  # Predictions with shape (time, nnodes, dim)
+  else:
+    with torch.no_grad():
+      for step in tqdm(range(nsteps), total=nsteps):
+        next_position = simulator.predict_positions(
+          current_positions,
+          [n_particles_per_example],
+          particle_type
+        )
+
+        # Update kinematic particles from prescribed trajectory.
+        kinematic_mask = (particle_type == KINEMATIC_PARTICLE_ID).clone().detach().to(device)
+        next_position_ground_truth = ground_truth_positions[:, step]  # use the first position data over all prediction
+        kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, current_positions.shape[-1])
+        next_position = torch.where(
+          kinematic_mask, next_position_ground_truth, next_position)
+        predictions.append(next_position)
+
+        # Shift `current_positions`, removing the oldest position in the sequence
+        # and appending the next position at the end.
+        current_positions = torch.cat(
+          [current_positions[:, 1:], next_position[:, None, :]], dim=1)
+
+  # Gather predictions and make rollout to shape (time, nnodes, dim)
   predictions = torch.stack(predictions)
-  ground_truth_positions = ground_truth_positions.permute(1, 0, 2)
+  trajectory = torch.cat((initial_positions.permute(1, 0, 2), predictions))
 
-  loss = (predictions - ground_truth_positions) ** 2
-
-  output_dict = {
-      'initial_positions': initial_positions.permute(1, 0, 2).cpu().numpy(),
-      'predicted_rollout': predictions.cpu().numpy(),
-      'ground_truth_rollout': ground_truth_positions.cpu().numpy(),
-      'particle_types': particle_types.cpu().numpy(),
-  }
-
-  return output_dict, loss
+  return trajectory
 
 
-def predict(device: str, FLAGS, flags, world_size):
+def predict(device: str,
+            flags,
+            world_size,
+            eval=False):
+
   """Predict rollouts.
 
   Args:
     simulator: Trained simulator if not will undergo training.
 
   """
-  metadata = reading_utils.read_metadata(FLAGS.data_path)
+  metadata = reading_utils.read_metadata(FLAGS.data_path)["rollout"]
   simulator = _get_simulator(metadata, FLAGS.noise_std, FLAGS.noise_std, device)
 
   # Load simulator
@@ -132,31 +172,74 @@ def predict(device: str, FLAGS, flags, world_size):
   ds = data_loader.get_data_loader_by_trajectories(path=f"{FLAGS.data_path}{split}.npz")
 
   eval_loss = []
-  with torch.no_grad():
+
+  # Start evaluation mode, which rolls out trajectory and compare it with ground truth
+  if eval:
+    example_rollout = {}
+    with torch.no_grad():
+      for example_i, (positions, particle_type, n_particles_per_example) in enumerate(ds):
+        positions.to(device)
+        initial_positions = positions[:, :INPUT_SEQUENCE_LENGTH]
+        ground_truth_positions = positions[:, INPUT_SEQUENCE_LENGTH:]
+        particle_type.to(device)
+        n_particles_per_example = torch.tensor([int(n_particles_per_example)], dtype=torch.int32).to(device)
+        nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
+
+        # Predict example rollout
+        trajectory = rollout(
+          simulator=simulator,
+          initial_positions=initial_positions.to(device),
+          particle_type=particle_type.to(device),
+          n_particles_per_example=n_particles_per_example.to(device),
+          nsteps=nsteps,
+          ground_truth_positions=ground_truth_positions.to(device),
+          device=device)
+
+        # Make the same shape
+        ground_truth_positions = ground_truth_positions.permute(1, 0, 2).to(device)
+
+        # Compute loss
+        loss = (trajectory[INPUT_SEQUENCE_LENGTH:] - ground_truth_positions) ** 2
+        print("Predicting example {} loss: {}".format(example_i, loss.mean()))
+        eval_loss.append(torch.flatten(loss))
+
+        # Save rollout in testing
+        if FLAGS.mode == 'rollout':
+          example_rollout['metadata'] = metadata
+          example_rollout["initial_positions"] = initial_positions.permute(1, 0, 2).cpu().numpy()
+          example_rollout["predicted_rollout"] = trajectory[INPUT_SEQUENCE_LENGTH:].cpu().numpy()
+          example_rollout["ground_truth_rollout"] = ground_truth_positions.cpu().numpy()
+          example_rollout["particle_types"] = particle_type.cpu().numpy()
+          example_rollout["loss"] = loss.cpu().numpy()
+          filename = f'{FLAGS.rollout_filename}_ex{example_i}.pkl'
+          filename = os.path.join(FLAGS.output_path, filename)
+          with open(filename, 'wb') as f:
+            pickle.dump(example_rollout, f)
+
+      print("Mean loss on rollout prediction: {}".format(
+        torch.mean(torch.cat(eval_loss))))
+
+  # Start pure rollout mode, which tracks gradient and does not evaluate the loss
+  else:
     for example_i, (positions, particle_type, n_particles_per_example) in enumerate(ds):
       positions.to(device)
+      initial_positions = positions[:, :INPUT_SEQUENCE_LENGTH]
       particle_type.to(device)
       n_particles_per_example = torch.tensor([int(n_particles_per_example)], dtype=torch.int32).to(device)
-
       nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
+
       # Predict example rollout
-      example_rollout, loss = rollout(simulator, positions.to(device), particle_type.to(device),
-                                      n_particles_per_example.to(device), nsteps, device)
+      trajectory = rollout(
+        simulator=simulator,
+        initial_positions=initial_positions.to(device),
+        particle_type=particle_type.to(device),
+        n_particles_per_example=n_particles_per_example.to(device),
+        nsteps=nsteps,
+        ground_truth_positions=initial_positions.to(device),
+        device=device,
+        eval=False)
 
-      example_rollout['metadata'] = metadata
-      print("Predicting example {} loss: {}".format(example_i, loss.mean()))
-      eval_loss.append(torch.flatten(loss))
-
-      # Save rollout in testing
-      if FLAGS.mode == 'rollout':
-        example_rollout['metadata'] = metadata
-        filename = f'rollout_{example_i}.pkl'
-        filename = os.path.join(FLAGS.output_path, filename)
-        with open(filename, 'wb') as f:
-          pickle.dump(example_rollout, f)
-
-  print("Mean loss on rollout prediction: {}".format(
-      torch.mean(torch.cat(eval_loss))))
+    return trajectory
 
 def optimizer_to(optim, device):
   for param in optim.state.values():
@@ -393,7 +476,7 @@ def main(_):
   if device == torch.device('cuda'):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "29500"
-  FLAGS = flags.FLAGS
+
   myflags = {}
   myflags["data_path"] = FLAGS.data_path
   myflags["noise_std"] = FLAGS.noise_std
