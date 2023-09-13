@@ -41,6 +41,7 @@ flags.DEFINE_float('lr_decay', 0.1, help='Learning rate decay.')
 flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps.')
 
 flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
+
 FLAGS = flags.FLAGS
 
 Stats = collections.namedtuple('Stats', ['mean', 'std'])
@@ -49,101 +50,66 @@ INPUT_SEQUENCE_LENGTH = 6  # So we can calculate the last 5 velocities.
 NUM_PARTICLE_TYPES = 9
 KINEMATIC_PARTICLE_ID = 3
 
-
 def rollout(
         simulator: learned_simulator.LearnedSimulator,
-        initial_positions: torch.tensor,
-        particle_type: torch.tensor,
+        position: torch.tensor,
+        particle_types: torch.tensor,
+        material_property: torch.tensor,
         n_particles_per_example: torch.tensor,
         nsteps: int,
-        ground_truth_positions: torch.tensor,
-        device: str,
-        eval: bool = True,
-        checkpoint_interval=1):
-
+        device):
   """
-  Rollout with gradient checkpointing to reduce memory accumulation over the forward steps.
+  Rolls out a trajectory by applying the model in sequence.
+
   Args:
-    simulator: learned_simulator
-    initial_positions: initial positions of particles for 6 timesteps with shape=(nparticles, 6, ndims).
-    particle_type: particle types shape=(nparticles, ).
-    n_particles_per_example: number of particles.
-    ground_truth_positions: positions of particles which is considered true with shape=(nparticles, timesteps, ndims)
-    nsteps: number of forward steps to roll out.
-    eval: rollout mode. If eval is true, the rollout evaluates the loss and does not track gradient
-    checkpoint_interval: If eval is false, the rollout tracks gradients and
-      use gradient checkpointing to reduce the memory accumulation over the forward steps.
-      The `checkpoint_interval` controls the frequency of the gradient checkpoint.
-
-  Returns:
-
+    simulator: Learned simulator.
+    features: Torch tensor features.
+    nsteps: Number of steps.
   """
+
+  initial_positions = position[:, :INPUT_SEQUENCE_LENGTH]
+  ground_truth_positions = position[:, INPUT_SEQUENCE_LENGTH:]
 
   current_positions = initial_positions
   predictions = []
 
-  if not eval:
-    for step in tqdm(range(nsteps), total=nsteps):
-      if step % checkpoint_interval == 0:
-        next_position = torch.utils.checkpoint.checkpoint(
-          simulator.predict_positions,
-          current_positions,
-          [n_particles_per_example],
-          particle_type
-        )
-      else:
-        next_position = simulator.predict_positions(
-          current_positions,
-          [n_particles_per_example],
-          particle_type
-        )
+  for step in tqdm(range(nsteps), total=nsteps):
+    # Get next position with shape (nnodes, dim)
+    next_position = simulator.predict_positions(
+        current_positions,
+        nparticles_per_example=[n_particles_per_example],
+        particle_types=particle_types,
+        material_property=material_property
+    )
 
-      # Update kinematic particles from prescribed trajectory.
-      kinematic_mask = (particle_type == KINEMATIC_PARTICLE_ID).clone().detach().to(device)
-      next_position_ground_truth = ground_truth_positions[:, 0]  # use the first position data over all prediction
-      kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, current_positions.shape[-1])
-      next_position = torch.where(
+    # Update kinematic particles from prescribed trajectory.
+    kinematic_mask = (particle_types == KINEMATIC_PARTICLE_ID).clone().detach().to(device)
+    next_position_ground_truth = ground_truth_positions[:, step]
+    kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, current_positions.shape[-1])
+    next_position = torch.where(
         kinematic_mask, next_position_ground_truth, next_position)
-      predictions.append(next_position)
+    predictions.append(next_position)
 
-      # Shift `current_positions`, removing the oldest position in the sequence
-      # and appending the next position at the end.
-      current_positions = torch.cat(
+    # Shift `current_positions`, removing the oldest position in the sequence
+    # and appending the next position at the end.
+    current_positions = torch.cat(
         [current_positions[:, 1:], next_position[:, None, :]], dim=1)
 
-  else:
-    with torch.no_grad():
-      for step in tqdm(range(nsteps), total=nsteps):
-        next_position = simulator.predict_positions(
-          current_positions,
-          [n_particles_per_example],
-          particle_type
-        )
-
-        # Update kinematic particles from prescribed trajectory.
-        kinematic_mask = (particle_type == KINEMATIC_PARTICLE_ID).clone().detach().to(device)
-        next_position_ground_truth = ground_truth_positions[:, step]  # use the first position data over all prediction
-        kinematic_mask = kinematic_mask.bool()[:, None].expand(-1, current_positions.shape[-1])
-        next_position = torch.where(
-          kinematic_mask, next_position_ground_truth, next_position)
-        predictions.append(next_position)
-
-        # Shift `current_positions`, removing the oldest position in the sequence
-        # and appending the next position at the end.
-        current_positions = torch.cat(
-          [current_positions[:, 1:], next_position[:, None, :]], dim=1)
-
-  # Gather predictions and make rollout to shape (time, nnodes, dim)
+  # Predictions with shape (time, nnodes, dim)
   predictions = torch.stack(predictions)
-  trajectory = torch.cat((initial_positions.permute(1, 0, 2), predictions))
+  ground_truth_positions = ground_truth_positions.permute(1, 0, 2)
 
-  return trajectory
+  loss = (predictions - ground_truth_positions) ** 2
 
+  output_dict = {
+      'initial_positions': initial_positions.permute(1, 0, 2).cpu().numpy(),
+      'predicted_rollout': predictions.cpu().numpy(),
+      'ground_truth_rollout': ground_truth_positions.cpu().numpy(),
+      'particle_types': particle_types.cpu().numpy(),
+      'material_property': material_property.cpu().numpy() if material_property is not None else None
+  }
 
-def predict(device: str,
-            flags,
-            world_size,
-            eval=False):
+  return output_dict, loss
 
   """Predict rollouts.
 
