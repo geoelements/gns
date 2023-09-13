@@ -214,6 +214,7 @@ def train(rank, flags, world_size, device):
   # Read metadata
   metadata = reading_utils.read_metadata(flags["data_path"], "train")
 
+  # Get simulator and optimizer
   if device == torch.device("cuda"):
     serial_simulator = _get_simulator(metadata, flags["noise_std"], flags["noise_std"], rank)
     simulator = DDP(serial_simulator.to(rank), device_ids=[rank], output_device=rank)
@@ -266,13 +267,12 @@ def train(rank, flags, world_size, device):
   if device == torch.device("cuda"):
     dl = distribute.get_data_distributed_dataloader_by_samples(path=f'{flags["data_path"]}train.npz',
                                                                input_length_sequence=INPUT_SEQUENCE_LENGTH,
-                                                               batch_size=flags["batch_size"],
-                                                               )
+                                                               batch_size=flags["batch_size"])
   else:
     dl = data_loader.get_data_loader_by_samples(path=f'{flags["data_path"]}train.npz',
                                                 input_length_sequence=INPUT_SEQUENCE_LENGTH,
-                                                batch_size=flags["batch_size"],
-                                                )
+                                                batch_size=flags["batch_size"])
+  n_features = len(dl.dataset._data[0])
 
   print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
   not_reached_nsteps = True
@@ -282,9 +282,18 @@ def train(rank, flags, world_size, device):
         torch.distributed.barrier()
       else:
         pass
-      for ((position, particle_type, n_particles_per_example), labels) in dl:
-        position.to(device_id)
-        particle_type.to(device_id)
+      for example in dl:  # ((position, particle_type, material_property, n_particles_per_example), labels) are in dl
+        position = example[0][0].to(device_id)
+        particle_type = example[0][1].to(device_id)
+        if n_features == 3:  # if dl includes material_property
+          material_property = example[0][2].to(device_id)
+          n_particles_per_example = example[0][3].to(device_id)
+        elif n_features == 2:
+          n_particles_per_example = example[0][2].to(device_id)
+        else:
+          raise NotImplementedError
+        labels = example[1].to(device_id)
+
         n_particles_per_example.to(device_id)
         labels.to(device_id)
 
@@ -297,18 +306,22 @@ def train(rank, flags, world_size, device):
         # Get the predictions and target accelerations.
         if device == torch.device("cuda"):
           pred_acc, target_acc = simulator.module.predict_accelerations(
-              next_positions=labels.to(rank),
-              position_sequence_noise=sampled_noise.to(rank),
-              position_sequence=position.to(rank),
-              nparticles_per_example=n_particles_per_example.to(rank),
-              particle_types=particle_type.to(rank))
+            next_positions=labels.to(rank),
+            position_sequence_noise=sampled_noise.to(rank),
+            position_sequence=position.to(rank),
+            nparticles_per_example=n_particles_per_example.to(rank),
+            particle_types=particle_type.to(rank),
+            material_property=material_property.to(rank) if n_features == 3 else None
+          )
         else:
           pred_acc, target_acc = simulator.predict_accelerations(
             next_positions=labels.to(device),
             position_sequence_noise=sampled_noise.to(device),
             position_sequence=position.to(device),
             nparticles_per_example=n_particles_per_example.to(device),
-            particle_types=particle_type.to(device))
+            particle_types=particle_type.to(device),
+            material_property=material_property.to(rank) if n_features == 3 else None
+          )
 
         # Calculate the loss and mask out loss on kinematic particles
         loss = (pred_acc - target_acc) ** 2
