@@ -151,7 +151,8 @@ def predict(device: str,
     simulator: Trained simulator if not will undergo training.
 
   """
-  metadata = reading_utils.read_metadata(FLAGS.data_path)["rollout"]
+  # Read metadata
+  metadata = reading_utils.read_metadata(FLAGS.data_path, "rollout")
   simulator = _get_simulator(metadata, FLAGS.noise_std, FLAGS.noise_std, device)
 
   # Load simulator
@@ -269,7 +270,8 @@ def train(rank, flags, world_size, device):
   else:
     device_id = device
 
-  metadata = reading_utils.read_metadata(flags["data_path"])
+  # Read metadata
+  metadata = reading_utils.read_metadata(flags["data_path"], "train")
 
   if device == torch.device("cuda"):
     serial_simulator = _get_simulator(metadata, flags["noise_std"], flags["noise_std"], rank)
