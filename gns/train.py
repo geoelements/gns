@@ -480,7 +480,7 @@ def main(_):
     world_size = torch.cuda.device_count()
     if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
       device = torch.device(f'cuda:{int(FLAGS.cuda_device_number)}')
-    predict(device, FLAGS, flags=myflags, world_size=world_size)
+    predict(device)
 
 
 if __name__ == '__main__':
