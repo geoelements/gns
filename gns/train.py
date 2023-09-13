@@ -29,6 +29,7 @@ flags.DEFINE_float('noise_std', 6.7e-4, help='The std deviation of the noise.')
 flags.DEFINE_string('data_path', None, help='The dataset directory.')
 flags.DEFINE_string('model_path', 'models/', help=('The path for saving checkpoints of the model.'))
 flags.DEFINE_string('output_path', 'rollouts/', help='The path for saving outputs (e.g. rollouts).')
+flags.DEFINE_string('output_filename', 'rollout', help='Base name for saving the rollout')
 flags.DEFINE_string('model_file', None, help=('Model filename (.pt) to resume from. Can also use "latest" to default to newest file.'))
 flags.DEFINE_string('train_state_file', 'train_state.pt', help=('Train state filename (.pt) to resume from. Can also use "latest" to default to newest file.'))
 

@@ -4,6 +4,7 @@ import numpy as np
 import toml
 import json
 import glob
+import argparse
 import torch.utils.checkpoint
 
 from example.inverse_problem.forward import rollout_with_checkpointing
@@ -16,8 +17,13 @@ from gns import reading_utils
 from gns import data_loader
 from gns import train
 
-# Opening config file
-inputs = toml.load('data/config.toml')
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--input_file', default="config.toml", type=str, help="Input file path")
+args = parser.parse_args()
+
+# Open config file
+inputs = toml.load(args.input_file)
 
 path = inputs["path"]
 
