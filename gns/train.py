@@ -382,7 +382,7 @@ def _get_simulator(
         metadata: json,
         acc_noise_std: float,
         vel_noise_std: float,
-        device: str) -> learned_simulator.LearnedSimulator:
+        device: torch.device) -> learned_simulator.LearnedSimulator:
   """Instantiates the simulator.
 
   Args:
@@ -406,10 +406,21 @@ def _get_simulator(
       },
   }
 
+  # Get necessary parameters for loading simulator.
+  if "nnode_in" in metadata and "nedge_in" in metadata:
+    nnode_in = metadata['nnode_in']
+    nedge_in = metadata['nedge_in']
+  else:
+    # Given that there is no additional node feature (e.g., material_property) except for:
+    # (position (dim), velocity (dim*6), particle_type (16)),
+    nnode_in = 37 if metadata['dim'] == 3 else 30
+    nedge_in = metadata['dim'] + 1
+
+  # Init simulator.
   simulator = learned_simulator.LearnedSimulator(
       particle_dimensions=metadata['dim'],
-      nnode_in=37 if metadata['dim'] == 3 else 30,
-      nedge_in=metadata['dim'] + 1,
+      nnode_in=nnode_in,
+      nedge_in=nedge_in,
       latent_dim=128,
       nmessage_passing_steps=10,
       nmlp_layers=2,
