@@ -111,6 +111,8 @@ def rollout(
 
   return output_dict, loss
 
+
+def predict(device: str):
   """Predict rollouts.
 
   Args:
@@ -125,7 +127,8 @@ def rollout(
   if os.path.exists(FLAGS.model_path + FLAGS.model_file):
     simulator.load(FLAGS.model_path + FLAGS.model_file)
   else:
-    train(simulator, flags, world_size, device)
+    raise Exception(f"Model does not exist at {FLAGS.model_path + FLAGS.model_file}")
+
   simulator.to(device)
   simulator.eval()
 
@@ -136,77 +139,49 @@ def rollout(
   # Use `valid`` set for eval mode if not use `test`
   split = 'test' if FLAGS.mode == 'rollout' else 'valid'
 
+  # Get dataset
   ds = data_loader.get_data_loader_by_trajectories(path=f"{FLAGS.data_path}{split}.npz")
+  # See if our dataset has material property as feature
+  if len(ds.dataset._data[0]) == 3:  # `ds` has (positions, particle_type, material_property)
+    material_property_as_feature = True
+  elif len(ds.dataset._data[0]) == 2:  # `ds` only has (positions, particle_type)
+    material_property_as_feature = False
+  else:
+    raise NotImplementedError
 
   eval_loss = []
-
-  # Start evaluation mode, which rolls out trajectory and compare it with ground truth
-  if eval:
-    example_rollout = {}
-    with torch.no_grad():
-      for example_i, (positions, particle_type, n_particles_per_example) in enumerate(ds):
-        positions.to(device)
-        initial_positions = positions[:, :INPUT_SEQUENCE_LENGTH]
-        ground_truth_positions = positions[:, INPUT_SEQUENCE_LENGTH:]
-        particle_type.to(device)
-        n_particles_per_example = torch.tensor([int(n_particles_per_example)], dtype=torch.int32).to(device)
-        nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
-
-        # Predict example rollout
-        trajectory = rollout(
-          simulator=simulator,
-          initial_positions=initial_positions.to(device),
-          particle_type=particle_type.to(device),
-          n_particles_per_example=n_particles_per_example.to(device),
-          nsteps=nsteps,
-          ground_truth_positions=ground_truth_positions.to(device),
-          device=device)
-
-        # Make the same shape
-        ground_truth_positions = ground_truth_positions.permute(1, 0, 2).to(device)
-
-        # Compute loss
-        loss = (trajectory[INPUT_SEQUENCE_LENGTH:] - ground_truth_positions) ** 2
-        print("Predicting example {} loss: {}".format(example_i, loss.mean()))
-        eval_loss.append(torch.flatten(loss))
-
-        # Save rollout in testing
-        if FLAGS.mode == 'rollout':
-          example_rollout['metadata'] = metadata
-          example_rollout["initial_positions"] = initial_positions.permute(1, 0, 2).cpu().numpy()
-          example_rollout["predicted_rollout"] = trajectory[INPUT_SEQUENCE_LENGTH:].cpu().numpy()
-          example_rollout["ground_truth_rollout"] = ground_truth_positions.cpu().numpy()
-          example_rollout["particle_types"] = particle_type.cpu().numpy()
-          example_rollout["loss"] = loss.cpu().numpy()
-          filename = f'{FLAGS.rollout_filename}_ex{example_i}.pkl'
-          filename = os.path.join(FLAGS.output_path, filename)
-          with open(filename, 'wb') as f:
-            pickle.dump(example_rollout, f)
-
-      print("Mean loss on rollout prediction: {}".format(
-        torch.mean(torch.cat(eval_loss))))
-
-  # Start pure rollout mode, which tracks gradient and does not evaluate the loss
-  else:
-    for example_i, (positions, particle_type, n_particles_per_example) in enumerate(ds):
-      positions.to(device)
-      initial_positions = positions[:, :INPUT_SEQUENCE_LENGTH]
-      particle_type.to(device)
-      n_particles_per_example = torch.tensor([int(n_particles_per_example)], dtype=torch.int32).to(device)
+  with torch.no_grad():
+    for example_i, features in enumerate(ds):
       nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
+      positions = features[0].to(device)
+      particle_type = features[1].to(device)
+      material_property = features[2].to(device) if material_property_as_feature else None
+      n_particles_per_example = torch.tensor([int(features[3])], dtype=torch.int32).to(device)
 
       # Predict example rollout
-      trajectory = rollout(
-        simulator=simulator,
-        initial_positions=initial_positions.to(device),
-        particle_type=particle_type.to(device),
-        n_particles_per_example=n_particles_per_example.to(device),
-        nsteps=nsteps,
-        ground_truth_positions=initial_positions.to(device),
-        device=device,
-        eval=False)
+      example_rollout, loss = rollout(simulator,
+                                      positions.to(device),
+                                      particle_type.to(device),
+                                      material_property.to(device),
+                                      n_particles_per_example.to(device),
+                                      nsteps,
+                                      device)
 
-    return trajectory
+      example_rollout['metadata'] = metadata
+      print("Predicting example {} loss: {}".format(example_i, loss.mean()))
+      eval_loss.append(torch.flatten(loss))
+
+      # Save rollout in testing
+      if FLAGS.mode == 'rollout':
+        example_rollout['metadata'] = metadata
+        example_rollout['loss'] = loss.mean()
+        filename = f'{FLAGS.output_filename}_ex{example_i}.pkl'
+        filename = os.path.join(FLAGS.output_path, filename)
+        with open(filename, 'wb') as f:
+          pickle.dump(example_rollout, f)
+
+  print("Mean loss on rollout prediction: {}".format(
+      torch.mean(torch.cat(eval_loss))))
 
 def optimizer_to(optim, device):
   for param in optim.state.values():
