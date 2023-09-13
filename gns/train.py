@@ -419,6 +419,7 @@ def _get_simulator(
       normalization_stats=normalization_stats,
       nparticle_types=NUM_PARTICLE_TYPES,
       particle_type_embedding_size=16,
+      boundary_clamp_limit=metadata["boundary_augment"] if "boundary_augment" in metadata else 1.0,
       device=device)
 
   return simulator
