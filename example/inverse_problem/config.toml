@@ -1,0 +1,34 @@
+# Top-level entries
+path = "data/"
+
+# Optimization sub-table
+[optimization]
+nepoch = 30
+inverse_timestep_range = [300, 380]
+checkpoint_interval = 1
+lr = 0.1
+initial_velocities = [[0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0]]
+
+# Ground Truth sub-table
+[ground_truth]
+ground_truth_npz = "sand2d_inverse_eval30.npz"
+ground_truth_mpm_inputfile = "mpm_input.json"
+
+# Forward Simulator sub-table
+[forward_simulator]
+dt_mpm = 0.0025
+model_path = "data/"
+model_file = "model-7020000.pt"
+simulator_metadata_path = "data/"
+simulator_metadata_file = "gns_metadata.json"
+
+# Resume sub-table
+[resume]
+resume = false
+epoch = 1
+
+# Output sub-table
+[output]
+output_dir = "data/outputs/"
+save_step = 1
+
