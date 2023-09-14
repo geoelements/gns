@@ -24,7 +24,7 @@ def load_npz_data(path):
 
 class SamplesDataset(torch.utils.data.Dataset):
     """Dataset of samples of trajectories.
-
+    
     Each sample is a tuple of the form (positions, particle_type).
     positions is a numpy array of shape (sequence_length, n_particles, dimension).
     particle_type is an integer.
@@ -49,8 +49,8 @@ class SamplesDataset(torch.utils.data.Dataset):
         # of the form (positions, particle_type)
         # convert to list of tuples
         # TODO: allow_pickle=True is potential security risk. See docs.
-        self._data = load_npz_data(path)
-
+        self._data = [item for _, item in np.load(path, allow_pickle=True).items()]
+        
         # length of each trajectory in the dataset
         # excluding the input_length_sequence
         # may (and likely is) variable between data
@@ -70,7 +70,7 @@ class SamplesDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         """Return length of dataset.
-
+        
         Returns:
             int: Length of dataset.
         """
@@ -78,7 +78,7 @@ class SamplesDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         """Returns a training example from the dataset.
-
+        
         Args:
             idx (int): Index of training example.
 
@@ -117,7 +117,7 @@ def collate_fn(data):
         data (list): List of tuples of the form ((positions, particle_type, n_particles_per_example), label).
 
     Returns:
-        tuple: Tuple of the form ((positions, particle_type, n_particles_per_example), label).
+        tuple: Tuple of the form ((positions, particle_type, n_particles_per_example), label).    
     """
     material_property_as_feature = True if len(data[0][0]) >= 4 else False
     position_list = []
