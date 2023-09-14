@@ -8,7 +8,7 @@ the fully differential nature of GNS and automatic differentiation (AD).
 Consider the multi-layered granular column which has different initial velocity for each layer
 (see the figure below).
 
-![initial_condition](figs/initial_condition.png)
+![initial_condition](figs/initial_vel.png)
 
 The ground truth simulation result of the above configuration 
 using material point method (MPM) is as follows.
