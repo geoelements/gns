@@ -156,15 +156,19 @@ def predict(device: str):
       nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
       positions = features[0].to(device)
       particle_type = features[1].to(device)
-      material_property = features[2].to(device) if material_property_as_feature else None
-      n_particles_per_example = torch.tensor([int(features[3])], dtype=torch.int32).to(device)
+      if material_property_as_feature:
+        material_property = features[2].to(device)
+        n_particles_per_example = torch.tensor([int(features[3])], dtype=torch.int32).to(device)
+      else:
+        material_property = None
+        n_particles_per_example = torch.tensor([int(features[2])], dtype=torch.int32).to(device)
 
       # Predict example rollout
       example_rollout, loss = rollout(simulator,
-                                      positions.to(device),
-                                      particle_type.to(device),
-                                      material_property.to(device),
-                                      n_particles_per_example.to(device),
+                                      positions,
+                                      particle_type,
+                                      material_property,
+                                      n_particles_per_example,
                                       nsteps,
                                       device)
 
