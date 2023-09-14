@@ -28,12 +28,13 @@ def simulator():
     }
     nparticle_types = 1
     particle_type_embedding_size = 16
+    boundary_clamp_limit = 1.0
     device = "cpu"
 
     return LearnedSimulator(
         particle_dimensions, nnode_in, nedge_in, latent_dim, nmessage_passing_steps,
         nmlp_layers, mlp_hidden_dim, connectivity_radius, boundaries,
-        normalization_stats, nparticle_types, particle_type_embedding_size, device)
+        normalization_stats, nparticle_types, particle_type_embedding_size, boundary_clamp_limit, device)
 
 
 def test_encoder_preprocessor(simulator):
