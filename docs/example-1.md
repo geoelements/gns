@@ -8,12 +8,12 @@ the fully differential nature of GNS and automatic differentiation (AD).
 Consider the multi-layered granular column which has different initial velocity for each layer
 (see the figure below).
 
-![initial_condition](figs/initial_vel.png)
+![initial_condition](img/initial_vel.png)
 
 The ground truth simulation result of the above configuration 
 using material point method (MPM) is as follows.
 
-![simulation_mpm](figs/true_ani.gif)
+![simulation_mpm](img/true_ani.gif)
 
 The objective of the inverse problem in this example is to estimate the initial velocity 
 of each layer only with the information about the final deposit for the last few timesteps.
@@ -95,10 +95,10 @@ previous state.
 The optimization result for the velocities are as follows. As the iteration increases, 
 the velocity profile becomes simular to the true value (black line).
 
-![vel_hist](figs/vel_hist.png)
+![vel_hist](img/vel_hist.png)
 
 The GNS simulation result with the estimated velocity values at `iteration=29` is as follows.
 The result shows a good agreement with the ground truth simulation.
 
-![gns_ani](figs/pred_ani.gif)
+![gns_ani](img/pred_ani.gif)
 
