@@ -9,6 +9,7 @@ import sys
 import numpy as np
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
+from tqdm import tqdm
 
 from absl import flags
 from absl import app
@@ -28,6 +29,7 @@ flags.DEFINE_float('noise_std', 6.7e-4, help='The std deviation of the noise.')
 flags.DEFINE_string('data_path', None, help='The dataset directory.')
 flags.DEFINE_string('model_path', 'models/', help=('The path for saving checkpoints of the model.'))
 flags.DEFINE_string('output_path', 'rollouts/', help='The path for saving outputs (e.g. rollouts).')
+flags.DEFINE_string('output_filename', 'rollout', help='Base name for saving the rollout')
 flags.DEFINE_string('model_file', None, help=('Model filename (.pt) to resume from. Can also use "latest" to default to newest file.'))
 flags.DEFINE_string('train_state_file', 'train_state.pt', help=('Train state filename (.pt) to resume from. Can also use "latest" to default to newest file.'))
 
@@ -41,6 +43,8 @@ flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps
 
 flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
 
+FLAGS = flags.FLAGS
+
 Stats = collections.namedtuple('Stats', ['mean', 'std'])
 
 INPUT_SEQUENCE_LENGTH = 6  # So we can calculate the last 5 velocities.
@@ -51,28 +55,36 @@ def rollout(
         simulator: learned_simulator.LearnedSimulator,
         position: torch.tensor,
         particle_types: torch.tensor,
+        material_property: torch.tensor,
         n_particles_per_example: torch.tensor,
         nsteps: int,
-        device):
-  """Rolls out a trajectory by applying the model in sequence.
+        device: torch.device):
+  """
+  Rolls out a trajectory by applying the model in sequence.
 
   Args:
     simulator: Learned simulator.
-    features: Torch tensor features.
+    position: Positions of particles (timesteps, nparticles, ndims)
+    particle_types: Particles types with shape (nparticles)
+    material_property: Friction angle normalized by tan() with shape (nparticles)
+    n_particles_per_example
     nsteps: Number of steps.
+    device: torch device.
   """
+
   initial_positions = position[:, :INPUT_SEQUENCE_LENGTH]
   ground_truth_positions = position[:, INPUT_SEQUENCE_LENGTH:]
 
   current_positions = initial_positions
   predictions = []
 
-  for step in range(nsteps):
+  for step in tqdm(range(nsteps), total=nsteps):
     # Get next position with shape (nnodes, dim)
     next_position = simulator.predict_positions(
         current_positions,
         nparticles_per_example=[n_particles_per_example],
         particle_types=particle_types,
+        material_property=material_property
     )
 
     # Update kinematic particles from prescribed trajectory.
@@ -99,26 +111,29 @@ def rollout(
       'predicted_rollout': predictions.cpu().numpy(),
       'ground_truth_rollout': ground_truth_positions.cpu().numpy(),
       'particle_types': particle_types.cpu().numpy(),
+      'material_property': material_property.cpu().numpy() if material_property is not None else None
   }
 
   return output_dict, loss
 
 
-def predict(device: str, FLAGS, flags, world_size):
+def predict(device: str):
   """Predict rollouts.
 
   Args:
     simulator: Trained simulator if not will undergo training.
 
   """
-  metadata = reading_utils.read_metadata(FLAGS.data_path)
+  # Read metadata
+  metadata = reading_utils.read_metadata(FLAGS.data_path, "rollout")
   simulator = _get_simulator(metadata, FLAGS.noise_std, FLAGS.noise_std, device)
 
   # Load simulator
   if os.path.exists(FLAGS.model_path + FLAGS.model_file):
     simulator.load(FLAGS.model_path + FLAGS.model_file)
   else:
-    train(simulator, flags, world_size, device)
+    raise Exception(f"Model does not exist at {FLAGS.model_path + FLAGS.model_file}")
+
   simulator.to(device)
   simulator.eval()
 
@@ -129,19 +144,37 @@ def predict(device: str, FLAGS, flags, world_size):
   # Use `valid`` set for eval mode if not use `test`
   split = 'test' if FLAGS.mode == 'rollout' else 'valid'
 
+  # Get dataset
   ds = data_loader.get_data_loader_by_trajectories(path=f"{FLAGS.data_path}{split}.npz")
+  # See if our dataset has material property as feature
+  if len(ds.dataset._data[0]) == 3:  # `ds` has (positions, particle_type, material_property)
+    material_property_as_feature = True
+  elif len(ds.dataset._data[0]) == 2:  # `ds` only has (positions, particle_type)
+    material_property_as_feature = False
+  else:
+    raise NotImplementedError
 
   eval_loss = []
   with torch.no_grad():
-    for example_i, (positions, particle_type, n_particles_per_example) in enumerate(ds):
-      positions.to(device)
-      particle_type.to(device)
-      n_particles_per_example = torch.tensor([int(n_particles_per_example)], dtype=torch.int32).to(device)
-
+    for example_i, features in enumerate(ds):
       nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
+      positions = features[0].to(device)
+      particle_type = features[1].to(device)
+      if material_property_as_feature:
+        material_property = features[2].to(device)
+        n_particles_per_example = torch.tensor([int(features[3])], dtype=torch.int32).to(device)
+      else:
+        material_property = None
+        n_particles_per_example = torch.tensor([int(features[2])], dtype=torch.int32).to(device)
+
       # Predict example rollout
-      example_rollout, loss = rollout(simulator, positions.to(device), particle_type.to(device),
-                                      n_particles_per_example.to(device), nsteps, device)
+      example_rollout, loss = rollout(simulator,
+                                      positions,
+                                      particle_type,
+                                      material_property,
+                                      n_particles_per_example,
+                                      nsteps,
+                                      device)
 
       example_rollout['metadata'] = metadata
       print("Predicting example {} loss: {}".format(example_i, loss.mean()))
@@ -150,7 +183,8 @@ def predict(device: str, FLAGS, flags, world_size):
       # Save rollout in testing
       if FLAGS.mode == 'rollout':
         example_rollout['metadata'] = metadata
-        filename = f'rollout_{example_i}.pkl'
+        example_rollout['loss'] = loss.mean()
+        filename = f'{FLAGS.output_filename}_ex{example_i}.pkl'
         filename = os.path.join(FLAGS.output_path, filename)
         with open(filename, 'wb') as f:
           pickle.dump(example_rollout, f)
@@ -186,8 +220,10 @@ def train(rank, flags, world_size, device):
   else:
     device_id = device
 
-  metadata = reading_utils.read_metadata(flags["data_path"])
+  # Read metadata
+  metadata = reading_utils.read_metadata(flags["data_path"], "train")
 
+  # Get simulator and optimizer
   if device == torch.device("cuda"):
     serial_simulator = _get_simulator(metadata, flags["noise_std"], flags["noise_std"], rank)
     simulator = DDP(serial_simulator.to(rank), device_ids=[rank], output_device=rank)
@@ -240,13 +276,12 @@ def train(rank, flags, world_size, device):
   if device == torch.device("cuda"):
     dl = distribute.get_data_distributed_dataloader_by_samples(path=f'{flags["data_path"]}train.npz',
                                                                input_length_sequence=INPUT_SEQUENCE_LENGTH,
-                                                               batch_size=flags["batch_size"],
-                                                               )
+                                                               batch_size=flags["batch_size"])
   else:
     dl = data_loader.get_data_loader_by_samples(path=f'{flags["data_path"]}train.npz',
                                                 input_length_sequence=INPUT_SEQUENCE_LENGTH,
-                                                batch_size=flags["batch_size"],
-                                                )
+                                                batch_size=flags["batch_size"])
+  n_features = len(dl.dataset._data[0])
 
   print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
   not_reached_nsteps = True
@@ -256,9 +291,18 @@ def train(rank, flags, world_size, device):
         torch.distributed.barrier()
       else:
         pass
-      for ((position, particle_type, n_particles_per_example), labels) in dl:
-        position.to(device_id)
-        particle_type.to(device_id)
+      for example in dl:  # ((position, particle_type, material_property, n_particles_per_example), labels) are in dl
+        position = example[0][0].to(device_id)
+        particle_type = example[0][1].to(device_id)
+        if n_features == 3:  # if dl includes material_property
+          material_property = example[0][2].to(device_id)
+          n_particles_per_example = example[0][3].to(device_id)
+        elif n_features == 2:
+          n_particles_per_example = example[0][2].to(device_id)
+        else:
+          raise NotImplementedError
+        labels = example[1].to(device_id)
+
         n_particles_per_example.to(device_id)
         labels.to(device_id)
 
@@ -271,18 +315,22 @@ def train(rank, flags, world_size, device):
         # Get the predictions and target accelerations.
         if device == torch.device("cuda"):
           pred_acc, target_acc = simulator.module.predict_accelerations(
-              next_positions=labels.to(rank),
-              position_sequence_noise=sampled_noise.to(rank),
-              position_sequence=position.to(rank),
-              nparticles_per_example=n_particles_per_example.to(rank),
-              particle_types=particle_type.to(rank))
+            next_positions=labels.to(rank),
+            position_sequence_noise=sampled_noise.to(rank),
+            position_sequence=position.to(rank),
+            nparticles_per_example=n_particles_per_example.to(rank),
+            particle_types=particle_type.to(rank),
+            material_property=material_property.to(rank) if n_features == 3 else None
+          )
         else:
           pred_acc, target_acc = simulator.predict_accelerations(
             next_positions=labels.to(device),
             position_sequence_noise=sampled_noise.to(device),
             position_sequence=position.to(device),
             nparticles_per_example=n_particles_per_example.to(device),
-            particle_types=particle_type.to(device))
+            particle_types=particle_type.to(device),
+            material_property=material_property.to(rank) if n_features == 3 else None
+          )
 
         # Calculate the loss and mask out loss on kinematic particles
         loss = (pred_acc - target_acc) ** 2
@@ -343,7 +391,7 @@ def _get_simulator(
         metadata: json,
         acc_noise_std: float,
         vel_noise_std: float,
-        device: str) -> learned_simulator.LearnedSimulator:
+        device: torch.device) -> learned_simulator.LearnedSimulator:
   """Instantiates the simulator.
 
   Args:
@@ -367,10 +415,21 @@ def _get_simulator(
       },
   }
 
+  # Get necessary parameters for loading simulator.
+  if "nnode_in" in metadata and "nedge_in" in metadata:
+    nnode_in = metadata['nnode_in']
+    nedge_in = metadata['nedge_in']
+  else:
+    # Given that there is no additional node feature (e.g., material_property) except for:
+    # (position (dim), velocity (dim*6), particle_type (16)),
+    nnode_in = 37 if metadata['dim'] == 3 else 30
+    nedge_in = metadata['dim'] + 1
+
+  # Init simulator.
   simulator = learned_simulator.LearnedSimulator(
       particle_dimensions=metadata['dim'],
-      nnode_in=37 if metadata['dim'] == 3 else 30,
-      nedge_in=metadata['dim'] + 1,
+      nnode_in=nnode_in,
+      nedge_in=nedge_in,
       latent_dim=128,
       nmessage_passing_steps=10,
       nmlp_layers=2,
@@ -380,6 +439,7 @@ def _get_simulator(
       normalization_stats=normalization_stats,
       nparticle_types=NUM_PARTICLE_TYPES,
       particle_type_embedding_size=16,
+      boundary_clamp_limit=metadata["boundary_augment"] if "boundary_augment" in metadata else 1.0,
       device=device)
 
   return simulator
@@ -393,7 +453,7 @@ def main(_):
   if device == torch.device('cuda'):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "29500"
-  FLAGS = flags.FLAGS
+
   myflags = {}
   myflags["data_path"] = FLAGS.data_path
   myflags["noise_std"] = FLAGS.noise_std
@@ -429,7 +489,7 @@ def main(_):
     world_size = torch.cuda.device_count()
     if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
       device = torch.device(f'cuda:{int(FLAGS.cuda_device_number)}')
-    predict(device, FLAGS, flags=myflags, world_size=world_size)
+    predict(device)
 
 
 if __name__ == '__main__':
