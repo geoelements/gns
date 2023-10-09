@@ -58,14 +58,18 @@ def rollout(
         material_property: torch.tensor,
         n_particles_per_example: torch.tensor,
         nsteps: int,
-        device):
+        device: torch.device):
   """
   Rolls out a trajectory by applying the model in sequence.
 
   Args:
     simulator: Learned simulator.
-    features: Torch tensor features.
+    position: Positions of particles (timesteps, nparticles, ndims)
+    particle_types: Particles types with shape (nparticles)
+    material_property: Friction angle normalized by tan() with shape (nparticles)
+    n_particles_per_example
     nsteps: Number of steps.
+    device: torch device.
   """
 
   initial_positions = position[:, :INPUT_SEQUENCE_LENGTH]
