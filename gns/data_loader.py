@@ -49,7 +49,7 @@ class SamplesDataset(torch.utils.data.Dataset):
         # of the form (positions, particle_type)
         # convert to list of tuples
         # TODO: allow_pickle=True is potential security risk. See docs.
-        self._data = [item for _, item in np.load(path, allow_pickle=True).items()]
+        self._data = load_npz_data(path)
         
         # length of each trajectory in the dataset
         # excluding the input_length_sequence
