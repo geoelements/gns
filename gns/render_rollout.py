@@ -12,6 +12,7 @@ from pyevtk.hl import pointsToVTK
 flags.DEFINE_string("rollout_dir", None, help="Directory where rollout.pkl are located")
 flags.DEFINE_string("rollout_name", None, help="Name of rollout `.pkl` file")
 flags.DEFINE_integer("step_stride", 3, help="Stride of steps to skip.")
+flags.DEFINE_bool("change_yz", False, help="Change y and z axis.")
 flags.DEFINE_enum("output_mode", "gif", ["gif", "vtk"], help="Type of render output")
 
 FLAGS = flags.FLAGS
@@ -92,7 +93,7 @@ class Render():
         return color_mask
 
     def render_gif_animation(
-            self, point_size=1, timestep_stride=3, vertical_camera_angle=20, viewpoint_rotation=0.5
+            self, point_size=1, timestep_stride=3, vertical_camera_angle=20, viewpoint_rotation=0.5, change_yz=False
     ):
         """
         Render `.gif` animation from `.pkl` trajectory data.
@@ -102,9 +103,9 @@ class Render():
             timestep_stride (int): Stride of steps to skip.
             vertical_camera_angle (float): Vertical camera angle in degree
             viewpoint_rotation (float): Viewpoint rotation in degree
-            
+
         Returns:
-            None
+            gif format animation
         """
         # Init figures
         fig = plt.figure()
@@ -139,7 +140,7 @@ class Render():
                 for j, datacase in enumerate(trajectory_datacases):
                     # select ax to plot at set boundary
                     axes[j] = fig.add_subplot(1, 2, j + 1, autoscale_on=False)
-                    axes[j].set_aspect(1.)
+                    axes[j].set_aspect("equal")
                     axes[j].set_xlim([float(xboundary[0]), float(xboundary[1])])
                     axes[j].set_ylim([float(yboundary[0]), float(yboundary[1])])
                     for mask, color in color_mask:
@@ -157,17 +158,39 @@ class Render():
                 for j, datacase in enumerate(trajectory_datacases):
                     # select ax to plot at set boundary
                     axes[j] = fig.add_subplot(1, 2, j + 1, projection='3d', autoscale_on=False)
-                    axes[j].set_xlim([float(xboundary[0]), float(xboundary[1])])
-                    axes[j].set_ylim([float(yboundary[0]), float(yboundary[1])])
-                    axes[j].set_zlim([float(zboundary[0]), float(zboundary[1])])
-                    for mask, color in color_mask:
-                        axes[j].scatter(self.trajectory[datacase][i][mask, 0],
-                                        self.trajectory[datacase][i][mask, 1],
-                                        self.trajectory[datacase][i][mask, 2], s=point_size, color=color)
-                    # rotate viewpoints angle little by little for each timestep
-                    axes[j].view_init(elev=vertical_camera_angle, azim=i * viewpoint_rotation)
-                    axes[j].grid(True, which='both')
-                    axes[j].set_title(render_datacases[j])
+                    if change_yz == False:
+                        axes[j].set_xlim([float(xboundary[0]), float(xboundary[1])])
+                        axes[j].set_ylim([float(yboundary[0]), float(yboundary[1])])
+                        axes[j].set_zlim([float(zboundary[0]), float(zboundary[1])])
+                        for mask, color in color_mask:
+                            axes[j].scatter(self.trajectory[datacase][i][mask, 0],
+                                            self.trajectory[datacase][i][mask, 1],
+                                            self.trajectory[datacase][i][mask, 2], s=point_size, color=color)
+                        # rotate viewpoints angle little by little for each timestep
+                        axes[j].set_box_aspect(
+                            aspect=(float(xboundary[1]) - float(xboundary[0]),
+                                    float(yboundary[1]) - float(yboundary[0]),
+                                    float(zboundary[1]) - float(zboundary[0])))
+                        axes[j].view_init(elev=vertical_camera_angle, azim=i * viewpoint_rotation)
+                        axes[j].grid(True, which='both')
+                        axes[j].set_title(render_datacases[j])
+                    else:
+                        axes[j].set_xlim([float(xboundary[0]), float(xboundary[1])])
+                        axes[j].set_ylim([float(zboundary[0]), float(zboundary[1])])
+                        axes[j].set_zlim([float(yboundary[0]), float(yboundary[1])])
+                        for mask, color in color_mask:
+                            axes[j].scatter(self.trajectory[datacase][i][mask, 0],
+                                            self.trajectory[datacase][i][mask, 2],
+                                            self.trajectory[datacase][i][mask, 1], s=point_size, color=color)
+                        # set aspect ratio to equal
+                        axes[j].set_box_aspect(
+                            aspect=(float(xboundary[1]) - float(xboundary[0]),
+                                    float(zboundary[1]) - float(zboundary[0]),
+                                    float(yboundary[1]) - float(yboundary[0])))
+                        # rotate viewpoints angle little by little for each timestep
+                        axes[j].view_init(elev=vertical_camera_angle, azim=i * viewpoint_rotation)
+                        axes[j].grid(True, which='both')
+                        axes[j].set_title(render_datacases[j])
 
         # Creat animation
         ani = animation.FuncAnimation(
@@ -208,7 +231,8 @@ def main(_):
             point_size=1,
             timestep_stride=FLAGS.step_stride,
             vertical_camera_angle=20,
-            viewpoint_rotation=0.3
+            viewpoint_rotation=0.3,
+            change_yz=FLAGS.change_yz
         )
     elif FLAGS.output_mode == "vtk":
         render.write_vtk()

@@ -10,3 +10,5 @@ torch_geometric
 torch_sparse
 torch_scatter
 torch-cluster
+tqdm
+toml
