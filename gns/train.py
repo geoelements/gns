@@ -22,7 +22,7 @@ from gns import data_loader
 from gns import distribute
 
 flags.DEFINE_enum(
-    'mode', 'train', ['train', 'valid', 'rollout'],
+    'mode', 'rollout', ['train', 'valid', 'rollout'],
     help='Train model, validation or rollout evaluation.')
 flags.DEFINE_integer('batch_size', 2, help='The batch size.')
 flags.DEFINE_float('noise_std', 6.7e-4, help='The std deviation of the noise.')
@@ -157,8 +157,14 @@ def predict(device: str):
   eval_loss = []
   with torch.no_grad():
     for example_i, features in enumerate(ds):
-      nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
       positions = features[0].to(device)
+      if metadata['sequence_length'] is not None:
+        # If `sequence_length` is predefined in metadata,
+        nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
+      else:
+        # If no predefined `sequence_length`, then get the sequence length
+        sequence_length = positions.shape[1]
+        nsteps = sequence_length - INPUT_SEQUENCE_LENGTH
       particle_type = features[1].to(device)
       if material_property_as_feature:
         material_property = features[2].to(device)
