@@ -22,7 +22,7 @@ from gns import data_loader
 from gns import distribute
 
 flags.DEFINE_enum(
-    'mode', 'rollout', ['train', 'valid', 'rollout'],
+    'mode', 'train', ['train', 'valid', 'rollout'],
     help='Train model, validation or rollout evaluation.')
 flags.DEFINE_integer('batch_size', 2, help='The batch size.')
 flags.DEFINE_float('noise_std', 6.7e-4, help='The std deviation of the noise.')
