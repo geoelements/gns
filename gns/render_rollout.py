@@ -59,6 +59,7 @@ class Render():
                 [rollout_data["initial_positions"], rollout_data[rollout_case[0]]], axis=0
             )
         self.trajectory = trajectory
+        self.loss = self.rollout_data['loss'].item()
 
         # Trajectory information
         self.dims = trajectory[rollout_cases[0][0]].shape[2]
@@ -148,6 +149,7 @@ class Render():
                                         self.trajectory[datacase][i][mask, 1], s=point_size, color=color)
                     axes[j].grid(True, which='both')
                     axes[j].set_title(render_datacases[j])
+                fig.suptitle(f"{i}/{self.num_steps}, Total MSE: {self.loss:.2e}")
 
         # Fig creating function for 3d
         elif self.dims == 3:
@@ -191,6 +193,7 @@ class Render():
                         axes[j].view_init(elev=vertical_camera_angle, azim=i * viewpoint_rotation)
                         axes[j].grid(True, which='both')
                         axes[j].set_title(render_datacases[j])
+                fig.suptitle(f"{i}/{self.num_steps}, Total MSE: {self.loss:.2e}")
 
         # Creat animation
         ani = animation.FuncAnimation(
