@@ -9,8 +9,8 @@ import numpy as np
 import os
 from pyevtk.hl import pointsToVTK
 
-flags.DEFINE_string("rollout_dir", None, help="Directory where rollout.pkl are located")
-flags.DEFINE_string("rollout_name", None, help="Name of rollout `.pkl` file")
+flags.DEFINE_string("rollout_dir", '/work2/08264/baagee/frontera/gns-mpm-data/gns-data/rollouts/iam_loading_r27/', help="Directory where rollout.pkl are located")
+flags.DEFINE_string("rollout_name", 'rollout_trj9_step3400000_ex0', help="Name of rollout `.pkl` file")
 flags.DEFINE_integer("step_stride", 3, help="Stride of steps to skip.")
 flags.DEFINE_bool("change_yz", False, help="Change y and z axis.")
 flags.DEFINE_enum("output_mode", "gif", ["gif", "vtk"], help="Type of render output")
@@ -59,6 +59,7 @@ class Render():
                 [rollout_data["initial_positions"], rollout_data[rollout_case[0]]], axis=0
             )
         self.trajectory = trajectory
+        self.loss = self.rollout_data['loss'].item()
 
         # Trajectory information
         self.dims = trajectory[rollout_cases[0][0]].shape[2]
@@ -148,6 +149,7 @@ class Render():
                                         self.trajectory[datacase][i][mask, 1], s=point_size, color=color)
                     axes[j].grid(True, which='both')
                     axes[j].set_title(render_datacases[j])
+                fig.suptitle(f"{i}/{self.num_steps}, Total MSE: {self.loss:.2e}")
 
         # Fig creating function for 3d
         elif self.dims == 3:
@@ -191,6 +193,7 @@ class Render():
                         axes[j].view_init(elev=vertical_camera_angle, azim=i * viewpoint_rotation)
                         axes[j].grid(True, which='both')
                         axes[j].set_title(render_datacases[j])
+                fig.suptitle(f"{i}/{self.num_steps}, Total MSE: {self.loss:.2e}")
 
         # Creat animation
         ani = animation.FuncAnimation(
