@@ -302,7 +302,7 @@ def main(_):
         nnode_in=11,
         nedge_in=3,
         latent_dim=128,
-        nmessage_passing_steps=15,
+        nmessage_passing_steps=10,
         nmlp_layers=2,
         mlp_hidden_dim=128,
         nnode_types=3,
