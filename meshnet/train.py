@@ -19,6 +19,7 @@ from meshnet.noise import get_velocity_noise
 from meshnet.utils import datas_to_graph
 from meshnet.utils import NodeType
 from meshnet.utils import optimizer_to
+from meshnet.utils import read_metadata
 from transform_4face import MyFaceToEdge
 
 
@@ -30,6 +31,7 @@ flags.DEFINE_integer('batch_size', 2, help='The batch size.')
 flags.DEFINE_string('data_path', "datasets/", help='The dataset directory.')
 flags.DEFINE_string('model_path', "model/", help=('The path for saving checkpoints of the model.'))
 flags.DEFINE_string('output_path', "rollouts/", help='The path for saving outputs (e.g. rollouts).')
+flags.DEFINE_string('metadata', "metadata_15gnn.json", help='Metadata filename (.json)')
 flags.DEFINE_string('model_file', None, help=('Model filename (.pt) to resume from. Can also use "latest" to default to newest file.'))
 flags.DEFINE_string('train_state_file', None, help=('Train state filename (.pt) to resume from. Can also use "latest" to default to newest file.'))
 flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
@@ -296,26 +298,53 @@ def main(_):
     if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
         device = torch.device(f'cuda:{int(FLAGS.cuda_device_number)}')
 
-    # load simulator
-    simulator = learned_simulator.MeshSimulator(
-        simulation_dimensions=2,
-        nnode_in=11,
-        nedge_in=3,
-        latent_dim=128,
-        nmessage_passing_steps=10,
-        nmlp_layers=2,
-        mlp_hidden_dim=128,
-        nnode_types=3,
-        node_type_embedding_size=9,
-        device=device)
-
     if FLAGS.mode == 'train':
+        # read metadata
+        metadata = read_metadata(
+            data_path=FLAGS.data_path,
+            purpose="train",
+            file_name=FLAGS.metadata)
+
+        # load simulator
+        simulator = learned_simulator.MeshSimulator(
+            simulation_dimensions=2,
+            nnode_in=11,
+            nedge_in=3,
+            latent_dim=128,
+            nmessage_passing_steps=metadata['nmessage_passing_steps'],
+            nmlp_layers=2,
+            mlp_hidden_dim=128,
+            nnode_types=3,
+            node_type_embedding_size=9,
+            device=device)
+
         if FLAGS.model_file == "None":
            FLAGS.model_file = None
         if FLAGS.train_state_file == "None":
            FLAGS.train_state_file = None
+
         train(simulator)
+
     elif FLAGS.mode in ['valid', 'rollout']:
+        # read metadata
+        metadata = read_metadata(
+            data_path=FLAGS.data_path,
+            purpose="train",
+            file_name=FLAGS.metadata)
+
+        # load simulator
+        simulator = learned_simulator.MeshSimulator(
+            simulation_dimensions=2,
+            nnode_in=11,
+            nedge_in=3,
+            latent_dim=128,
+            nmessage_passing_steps=metadata['nmessage_passing_steps'],
+            nmlp_layers=2,
+            mlp_hidden_dim=128,
+            nnode_types=3,
+            node_type_embedding_size=9,
+            device=device)
+
         predict(simulator, device)
 
 if __name__ == "__main__":
