@@ -26,7 +26,7 @@ from transform_4face import MyFaceToEdge
 flags.DEFINE_enum(
     'mode', 'train', ['train', 'valid', 'rollout'],
     help='Train model, validation or rollout evaluation.')
-flags.DEFINE_bool('is_fixed_mesh', False, help='Whether mesh-related data is fixed with time.')
+flags.DEFINE_bool('is_fixed_mesh', True, help='Whether mesh-related data is fixed with time.')
 flags.DEFINE_integer('batch_size', 2, help='The batch size.')
 flags.DEFINE_string('data_path', "datasets/", help='The dataset directory.')
 flags.DEFINE_string('model_path', "model/", help=('The path for saving checkpoints of the model.'))
@@ -81,7 +81,7 @@ def predict(simulator: learned_simulator.MeshSimulator,
     eval_loss = []
     with torch.no_grad():
         for i, features in enumerate(ds):
-            nsteps = len(features[0]) - INPUT_SEQUENCE_LENGTH
+            nsteps = len(features[2]) - INPUT_SEQUENCE_LENGTH
             prediction_data = rollout(simulator, features, nsteps, device)
             print(f"Rollout for example{i}: loss = {prediction_data['mean_loss']}")
 
@@ -120,9 +120,9 @@ def rollout(simulator: learned_simulator.MeshSimulator,
 
         # Predict next velocity
         # First, obtain data to form a graph
-        current_node_coords = node_coords[step].to(device)
-        current_node_type = node_types[step].to(device)
-        current_cell = cells[step].to(device)
+        current_node_coords = node_coords[0].to(device) if FLAGS.is_fixed_mesh else node_coords[step].to(device)
+        current_node_type = node_types[0].to(device) if FLAGS.is_fixed_mesh else node_types[step].to(device)
+        current_cell = cells[0].to(device) if FLAGS.is_fixed_mesh else cells[step].to(device)
         current_time_idx_vector = torch.tensor(np.full(current_node_coords.shape[0], step)).to(torch.float32).contiguous().to(device)
         next_ground_truth_velocities = ground_truth_velocities[step].to(device)
 
