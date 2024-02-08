@@ -12,3 +12,4 @@ torch_scatter
 torch-cluster
 tqdm
 toml
+imageio
