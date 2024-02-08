@@ -74,6 +74,12 @@ class VisMeshNet:
         self.ntimesteps = len(vel_true)
         self.lx = quad_grid_config[0]
         self.ly = quad_grid_config[1]
+        # Get the max and min velocity magnitude values
+        self.vmin_true, self.vmax_true = self.vel_mag_true[:, :].min(), self.vel_mag_true[:, :].max()
+        if vel_pred is not None:
+            self.vmin_pred, self.vmax_pred = self.vel_mag_pred[:, :].min(), self.vel_mag_pred[:, :].max()
+            self.vmin_both = np.concatenate((self.vel_mag_true, self.vel_mag_pred)).min()
+            self.vmax_both = np.concatenate((self.vel_mag_true, self.vel_mag_pred)).max()
 
         # Color map
         # Choose a colormap and modify it to display NaN values in a specific color
@@ -88,17 +94,15 @@ class VisMeshNet:
         # Select velocity magnitude data to plot
         if vis_target == "vel_mag_true":
             vel_mag = self.vel_mag_true
+            vmin, vmax = self.vmin_true, self.vmax_true
         elif vis_target == "vel_mag_pred":
             vel_mag = self.vel_mag_pred
+            vmin, vmax = self.vmin_pred, self.vmax_pred
         else:
             raise ValueError("`vis_target` is expected to get `vel_true` or `veL_pred`")
 
-        # Get the max and min velocity magnitude values
-        vmin = vel_mag[:, :].min()
-        vmax = vel_mag[:, :].max()
-
-        # Set contour levels between min and max values of magnitudes
-        levels = np.linspace(vmin, vmax, 100)
+        # # Set contour levels between min and max values of magnitudes
+        # levels = np.linspace(vmin, vmax, 100)
 
         # Init figure
         fig, ax = plt.subplots(1, 1, figsize=(5, 4))
@@ -120,7 +124,7 @@ class VisMeshNet:
 
             # make the velocity field plot
             extent = [x_grid.min(), x_grid.max(), y_grid.min(), y_grid.max()]
-            velocity_field = ax.imshow(vel_grid, cmap=self.cmap, extent=extent)
+            velocity_field = ax.imshow(vel_grid, cmap=self.cmap, extent=extent, vmin=vmin, vmax=vmax)
             cbar = fig.colorbar(velocity_field, cax=cax, orientation='vertical')
             # velocity_contour = ax.contourf(x_grid, y_grid, vel_grid, 50, cmap=self.cmap, levels=levels)
             # cbar = fig.colorbar(velocity_contour, cax=cax, orientation='vertical')
@@ -147,11 +151,7 @@ class VisMeshNet:
         }
 
         # Get the max and min velocity magnitude values
-        vmin = np.concatenate((self.vel_mag_true, self.vel_mag_pred)).min()
-        vmax = np.concatenate((self.vel_mag_true, self.vel_mag_pred)).max()
-
-        # Setting contour levels between min and max values of magnitudes
-        levels = np.linspace(vmin, vmax, 100)
+        vmin, vmax = self.vmin_both, self.vmax_both
 
         fig = plt.figure(figsize=(9, 4))
         grid = ImageGrid(
@@ -183,7 +183,7 @@ class VisMeshNet:
 
                 # make the velocity field plot
                 extent = [x_grid.min(), x_grid.max(), y_grid.min(), y_grid.max()]
-                velocity_field = grid[i].imshow(vel_grid, cmap=self.cmap, extent=extent)
+                velocity_field = grid[i].imshow(vel_grid, cmap=self.cmap, extent=extent, vmin=vmin, vmax=vmax)
                 cbar = fig.colorbar(velocity_field, cax=grid.cbar_axes[0], orientation='vertical')
 
                 # Format the color bar labels in scientific notation
