@@ -50,14 +50,34 @@ class VisMeshNet:
             node_type,
             vel_true,
             vel_pred=None,
-            quad_grid_config=None
+            quad_grid_config=None,
     ):
+        """
+
+        Args:
+            mesh_type (str): "triangle" or "quad"
+            node_coords ():
+            node_type ():
+            vel_true ():
+            vel_pred ():
+            quad_grid_config (list): [lx, ly]
+        """
 
         self.mesh_type = mesh_type
         self.node_coords = node_coords
         self.node_type = node_type
         self.vel_true = vel_true
         self.vel_pred = vel_pred
+
+        # Error handling
+        if mesh_type == "quad":
+            print("Mesh type: quad")
+            if quad_grid_config == None:
+                raise ValueError("`quad_grid_config` should be passed if `mesh_type` is `quad`")
+        elif mesh_type == "triangle":
+            print("Mesh type: triangle")
+        else:
+            raise ValueError("Mesh type is expected to be `qaud` or `triangle`")
 
         # Compute velocity magnitude
         self.vel_mag_true = np.linalg.norm(vel_true, axis=-1)
@@ -72,8 +92,9 @@ class VisMeshNet:
 
         # Necessary variables
         self.ntimesteps = len(vel_true)
-        self.lx = quad_grid_config[0]
-        self.ly = quad_grid_config[1]
+        if quad_grid_config is not None:
+            self.lx = quad_grid_config[0]
+            self.ly = quad_grid_config[1]
         # Get the max and min velocity magnitude values
         self.vmin_true, self.vmax_true = self.vel_mag_true[:, :].min(), self.vel_mag_true[:, :].max()
         if vel_pred is not None:
