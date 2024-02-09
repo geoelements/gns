@@ -132,11 +132,11 @@ class VisMeshNet:
             # Format the color bar labels in scientific notation
             cbar.formatter = FuncFormatter(lambda x, _: f'{x:.1e}')
             cbar.update_ticks()
-            cbar.set_label("Velocity (m/s)", rotation=270, labelpad=10)
+            cbar.set_label("Velocity (lu/ts)", rotation=270, labelpad=10)
             ax.set_aspect('equal')
             ax.set_title(f"{timestep}/{self.ntimesteps}")
-            ax.set_xlabel("lx")
-            ax.set_ylabel("ly")
+            ax.set_xlabel("x (lu)")
+            ax.set_ylabel("y (lu)")
         else:
             raise ValueError
 
@@ -189,12 +189,12 @@ class VisMeshNet:
                 # Format the color bar labels in scientific notation
                 cbar.formatter = FuncFormatter(lambda x, _: f'{x:.1e}')
                 cbar.update_ticks()
-                cbar.set_label("Velocity (m/s)", rotation=270, labelpad=10)
+                cbar.set_label("Velocity (lu/ts)", rotation=270, labelpad=10)
                 fig.suptitle(f"{timestep}/{self.ntimesteps}")
                 grid[i].set_aspect('equal')
                 grid[i].set_title(sim, pad=3)
-                grid[i].set_xlabel("x (m)")
-                grid[i].set_ylabel("y (m)")
+                grid[i].set_xlabel("x (lu)")
+                grid[i].set_ylabel("y (lu)")
 
         else:
             raise ValueError
