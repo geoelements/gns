@@ -143,7 +143,7 @@ def predict(device: str):
     os.makedirs(FLAGS.output_path)
 
   # Use `valid`` set for eval mode if not use `test`
-  split = 'test' if FLAGS.mode == 'rollout' else 'valid'
+  split = 'test' if (FLAGS.mode == 'rollout' or (not os.path.isfile("{FLAGS.data_path}valid.npz"))) else 'valid'
 
   # Get dataset
   ds = data_loader.get_data_loader_by_trajectories(path=f"{FLAGS.data_path}{split}.npz")
@@ -158,6 +158,7 @@ def predict(device: str):
   eval_loss = []
   with torch.no_grad():
     for example_i, features in enumerate(ds):
+      print(f"processing example number {example_i}")
       positions = features[0].to(device)
       if metadata['sequence_length'] is not None:
         # If `sequence_length` is predefined in metadata,
@@ -358,7 +359,7 @@ def train(rank, flags, world_size, device):
           param['lr'] = lr_new
 
         if rank == 0 or device == torch.device("cpu"):
-          print(f'Training step: {step}/{flags["ntraining_steps"]}. Loss: {loss}.')
+          print(f'Training step: {step}/{flags["ntraining_steps"]}. Loss: {loss}.',flush=True)
           # Save model state
           if step % flags["nsave_steps"] == 0:
             if device == torch.device("cpu"):
@@ -498,6 +499,8 @@ def main(_):
     world_size = torch.cuda.device_count()
     if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
       device = torch.device(f'cuda:{int(FLAGS.cuda_device_number)}')
+    #test code
+    print(f"device is {device} world size is {world_size}")
     predict(device)
 
 
