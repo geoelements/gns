@@ -473,19 +473,16 @@ def main(_):
       available_gpus = torch.cuda.device_count()
       print(f"Available GPUs = {available_gpus}")
 
-      # Set number of GPUs to use and print status
-      if FLAGS.n_gpus is None:
+      # Set the number of GPUs based on availability and the specified number
+      if FLAGS.n_gpus is None or FLAGS.n_gpus > available_gpus:
         world_size = available_gpus
-        print(f"Using all available GPUs: {world_size}/{available_gpus}")
+        if FLAGS.n_gpus is not None:
+          print(f"Warning: The number of GPUs specified ({FLAGS.n_gpus}) exceeds the available GPUs ({available_gpus})")
       else:
-        # Check if the specified number of GPUs exceeds the available GPUs
-        if FLAGS.n_gpus > available_gpus:
-          world_size = available_gpus
-          print(f"Warning: The number of GPUs specified ({FLAGS.n_gpus}) exceeds the available GPUs ({available_gpus}")
-          print(f"Using all available GPUs: {world_size}/{available_gpus}")
-        else:
-          world_size = FLAGS.n_gpus
-        print(f"Using {world_size}/{available_gpus} GPUs")
+        world_size = FLAGS.n_gpus
+
+      # Print the status of GPU usage
+      print(f"Using {world_size}/{available_gpus} GPUs")
 
       # Spawn training to GPUs
       distribute.spawn_train(train, myflags, world_size, device)
