@@ -25,3 +25,10 @@ def read_metadata(data_path: str,
       metadata = json.loads(fp.read())
 
   return metadata
+
+def flags_to_dict(FLAGS):
+  flags_dict = {}
+  for name in FLAGS:
+    flag_value = FLAGS[name].value
+    flags_dict[name] = flag_value
+  return flags_dict

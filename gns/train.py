@@ -42,6 +42,7 @@ flags.DEFINE_float('lr_decay', 0.1, help='Learning rate decay.')
 flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps.')
 
 flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
+flags.DEFINE_integer("n_gpus", 1, help="The number of GPUs to utilize for training")
 
 FLAGS = flags.FLAGS
 
@@ -460,18 +461,7 @@ def main(_):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "29500"
 
-  myflags = {}
-  myflags["data_path"] = FLAGS.data_path
-  myflags["noise_std"] = FLAGS.noise_std
-  myflags["lr_init"] = FLAGS.lr_init
-  myflags["lr_decay"] = FLAGS.lr_decay
-  myflags["lr_decay_steps"] = FLAGS.lr_decay_steps
-  myflags["batch_size"] = FLAGS.batch_size
-  myflags["ntraining_steps"] = FLAGS.ntraining_steps
-  myflags["nsave_steps"] = FLAGS.nsave_steps
-  myflags["model_file"] = FLAGS.model_file
-  myflags["model_path"] = FLAGS.model_path
-  myflags["train_state_file"] = FLAGS.train_state_file
+  myflags = reading_utils.flags_to_dict(FLAGS)
 
   if FLAGS.mode == 'train':
     # If model_path does not exist create new directory.
@@ -480,8 +470,21 @@ def main(_):
 
     # Train on gpu 
     if device == torch.device('cuda'):
-      world_size = torch.cuda.device_count()
-      print(f"world_size = {world_size}")
+      available_gpus = torch.cuda.device_count()
+      print(f"Available GPUs = {available_gpus}")
+
+      # Set the number of GPUs based on availability and the specified number
+      if FLAGS.n_gpus is None or FLAGS.n_gpus > available_gpus:
+        world_size = available_gpus
+        if FLAGS.n_gpus is not None:
+          print(f"Warning: The number of GPUs specified ({FLAGS.n_gpus}) exceeds the available GPUs ({available_gpus})")
+      else:
+        world_size = FLAGS.n_gpus
+
+      # Print the status of GPU usage
+      print(f"Using {world_size}/{available_gpus} GPUs")
+
+      # Spawn training to GPUs
       distribute.spawn_train(train, myflags, world_size, device)
 
     # Train on cpu  
