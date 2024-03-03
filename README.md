@@ -60,6 +60,151 @@ In mesh-based domain, the renderer writes `.gif` animation.
 ![Fluid flow rollout](docs/img/meshnet.gif)
 > Meshnet GNS prediction of cylinder flow after training for 1 million steps.
 
+
+## Command line arguments details
+<details>
+<summary>`train.py` in GNS (particulate domain) </summary>
+
+**mode (Enum)** 
+
+This flag is used to set the operation mode for the script. It can take one of three values; 'train', 'valid', or 'rollout'.
+
+**batch_size (Integer)**
+
+Batch size for training.
+
+**noise_std (Float)** 
+
+Standard deviation of the noise when training.
+
+**data_path (String)** 
+
+Specifies the directory path where the dataset is located. 
+The dataset is expected to be in a specific format (e.g., .npz files).
+It should contain `metadata.json`.
+If `--mode` is training, the directory should contain `train.npz`.
+If `--mode` is testing (rollout), the directory should contain `test.npz`.
+If `--mode` is valid, the directory should contain `valid.npz`.
+
+**model_path (String)** 
+
+The directory path where the trained model checkpoints are saved during training or loaded from during validation/rollout.
+
+**output_path (String)** 
+
+Defines the directory where the outputs (e.g., rollouts) are saved, 
+when the `--mode` is set to rollout.
+This is particularly relevant in the rollout mode where the predictions of the model are stored.
+
+**output_filename (String)** 
+
+Base filename to use when saving outputs during rollout.
+Default is "rollout", and the output will be saved as `rollout.pkl` in `output_path`. 
+It is not intended to include the file extension.
+
+**model_file (String)** 
+
+The filename of the model checkpoint to load for validation or rollout (e.g., model-10000.pt). 
+It supports a special value "latest" to automatically select the newest checkpoint file. 
+This flexibility facilitates the evaluation of models at different stages of training.
+
+**train_state_file (String)** 
+
+Similar to model_file, but for loading the training state (e.g., optimizer state).
+It supports a special value "latest" to automatically select the newest checkpoint file. 
+(e.g., training_state-10000.pt)
+
+**ntraining_steps (Integer)** 
+
+The total number of training steps to execute before stopping.
+
+**nsave_steps (Integer)** 
+
+Interval at which the model and training state are saved.
+
+**lr_init (Float)** 
+
+Initial learning rate.
+
+**lr_decay (Float)** 
+
+How much the learning rate should decay over time.
+
+**lr_decay_steps (Integer)** 
+
+Steps at which learning rate should decay.
+
+**cuda_device_number (Integer)** 
+
+Base CUDA device (zero indexed).
+Default is None so default CUDA device will be used.
+
+**n_gpus (Integer)** 
+
+Number of GPUs to use for training.
+</details>
+
+
+
+<details>
+<summary>`train.py` in MeshNet (mesh-based domain) </summary>
+
+**mode (String)**
+
+This flag is used to set the operation mode for the script. It can take one of three values; 'train', 'valid', or 'rollout'.
+
+**batch_size (Integer)** 
+
+Batch size for training.
+
+**data_path (String)**
+
+Specifies the directory path where the dataset is located. 
+The dataset is expected to be in a specific format (e.g., .npz files).
+If `--mode` is training, the directory should contain `train.npz`.
+If `--mode` is testing (rollout), the directory should contain `test.npz`.
+If `--mode` is valid, the directory should contain `valid.npz`.
+
+**model_path (String)** 
+
+The directory path where the trained model checkpoints are saved during training or loaded from during validation/rollout.
+
+**output_path (String)**
+
+Defines the directory where the outputs (e.g., rollouts) are saved, 
+when the `--mode` is set to rollout.
+This is particularly relevant in the rollout mode where the predictions of the model are stored.
+
+**model_file (String)**
+
+The filename of the model checkpoint to load for validation or rollout (e.g., model-10000.pt). 
+It supports a special value "latest" to automatically select the newest checkpoint file. 
+This flexibility facilitates the evaluation of models at different stages of training.
+
+**train_state_file (String)**
+
+Similar to model_file, but for loading the training state (e.g., optimizer state).
+It supports a special value "latest" to automatically select the newest checkpoint file. 
+(e.g., training_state-10000.pt)
+
+**cuda_device_number (Integer)**
+
+Allows specifying a particular CUDA device for training or evaluation, enabling the use of specific GPUs in multi-GPU setups.
+
+**rollout_filename (String)**
+
+Base name for saving rollout files. The actual filenames will append an index to this base name.
+
+**ntraining_steps (Integer)**
+
+The total number of training steps to execute before stopping.
+
+**nsave_steps (Integer)**
+
+Interval at which the model and training state are saved.
+
+</details>
+
 ## Datasets
 ### Particulate domain:
 We use the numpy `.npz` format for storing positional data for GNS training.  The `.npz` format includes a list of tuples of arbitrary length where each tuple corresponds to a differenet training trajectory and is of the form `(position, particle_type)`.  The data loader provides `INPUT_SEQUENCE_LENGTH` positions, set equal to six by default, to provide the GNS with the last `INPUT_SEQUENCE_LENGTH` minus one positions as input to predict the position at the next time step.  The `position` is a 3-D tensor of shape `(n_time_steps, n_particles, n_dimensions)` and `particle_type` is a 1-D tensor of shape `(n_particles)`.  
@@ -172,3 +317,4 @@ Kumar, K., & Vantassel, J. (2023). GNS: A generalizable Graph Neural Network-bas
 #### Dataset
 * Vantassel, Joseph; Kumar, Krishna (2022) “Graph Network Simulator Datasets.” DesignSafe-CI. https://doi.org/10.17603/ds2-0phb-dg64 v1 
 * Kumar, K., Y. Choi. (2023) "Cylinder flow with graph neural network-based simulator." DesignSafe-CI. https://doi.org/10.17603/ds2-fzg7-1719
+
