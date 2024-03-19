@@ -4,15 +4,15 @@ from tqdm import tqdm
 
 
 def rollout_with_checkpointing(
-        simulator: learned_simulator.LearnedSimulator,
-        initial_positions: torch.tensor,
-        particle_types: torch.tensor,
-        n_particles_per_example: torch.tensor,
-        nsteps: int,
-        checkpoint_interval: int = 1,
-        material_property: torch.tensor = None
+    simulator: learned_simulator.LearnedSimulator,
+    initial_positions: torch.tensor,
+    particle_types: torch.tensor,
+    n_particles_per_example: torch.tensor,
+    nsteps: int,
+    checkpoint_interval: int = 1,
+    material_property: torch.tensor = None,
 ):
-    """ Rollout with gradient checkpointing to reduce memory accumulation over the forward steps during backpropagation.
+    """Rollout with gradient checkpointing to reduce memory accumulation over the forward steps during backpropagation.
     Args:
       simulator: learned_simulator
       initial_positions: initial positions of particles for 6 timesteps with shape=(nparticles, 6, ndims).
@@ -35,14 +35,14 @@ def rollout_with_checkpointing(
                 current_positions,
                 [n_particles_per_example],
                 particle_types,
-                material_property
+                material_property,
             )
         else:
             next_position = simulator.predict_positions(
                 current_positions,
                 [n_particles_per_example],
                 particle_types,
-                material_property
+                material_property,
             )
 
         predictions.append(next_position)
@@ -50,8 +50,7 @@ def rollout_with_checkpointing(
         # Shift `current_positions`, removing the oldest position in the sequence
         # and appending the next position at the end.
         current_positions = torch.cat(
-            [current_positions[:, 1:], next_position[:, None, :]], dim=1)
+            [current_positions[:, 1:], next_position[:, None, :]], dim=1
+        )
 
-    return torch.cat(
-        (initial_positions.permute(1, 0, 2), torch.stack(predictions))
-    )
+    return torch.cat((initial_positions.permute(1, 0, 2), torch.stack(predictions)))

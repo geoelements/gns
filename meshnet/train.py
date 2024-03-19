@@ -12,7 +12,7 @@ from tqdm import tqdm
 from absl import flags
 from absl import app
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from meshnet import data_loader
 from meshnet import learned_simulator
 from meshnet.noise import get_velocity_noise
@@ -22,18 +22,43 @@ from meshnet.utils import optimizer_to
 
 
 flags.DEFINE_enum(
-    'mode', 'train', ['train', 'valid', 'rollout'],
-    help='Train model, validation or rollout evaluation.')
-flags.DEFINE_integer('batch_size', 2, help='The batch size.')
-flags.DEFINE_string('data_path', None, help='The dataset directory.')
-flags.DEFINE_string('model_path', "model/", help=('The path for saving checkpoints of the model.'))
-flags.DEFINE_string('output_path', "rollouts/", help='The path for saving outputs (e.g. rollouts).')
-flags.DEFINE_string('model_file', None, help=('Model filename (.pt) to resume from. Can also use "latest" to default to newest file.'))
-flags.DEFINE_string('train_state_file', None, help=('Train state filename (.pt) to resume from. Can also use "latest" to default to newest file.'))
-flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
-flags.DEFINE_string('rollout_filename', "rollout", help='Name saving the rollout')
-flags.DEFINE_integer('ntraining_steps', int(1E7), help='Number of training steps.')
-flags.DEFINE_integer('nsave_steps', int(5000), help='Number of steps at which to save the model.')
+    "mode",
+    "train",
+    ["train", "valid", "rollout"],
+    help="Train model, validation or rollout evaluation.",
+)
+flags.DEFINE_integer("batch_size", 2, help="The batch size.")
+flags.DEFINE_string("data_path", None, help="The dataset directory.")
+flags.DEFINE_string(
+    "model_path", "model/", help=("The path for saving checkpoints of the model.")
+)
+flags.DEFINE_string(
+    "output_path", "rollouts/", help="The path for saving outputs (e.g. rollouts)."
+)
+flags.DEFINE_string(
+    "model_file",
+    None,
+    help=(
+        'Model filename (.pt) to resume from. Can also use "latest" to default to newest file.'
+    ),
+)
+flags.DEFINE_string(
+    "train_state_file",
+    None,
+    help=(
+        'Train state filename (.pt) to resume from. Can also use "latest" to default to newest file.'
+    ),
+)
+flags.DEFINE_integer(
+    "cuda_device_number",
+    None,
+    help="CUDA device (zero indexed), default is None so default CUDA device will be used.",
+)
+flags.DEFINE_string("rollout_filename", "rollout", help="Name saving the rollout")
+flags.DEFINE_integer("ntraining_steps", int(1e7), help="Number of training steps.")
+flags.DEFINE_integer(
+    "nsave_steps", int(5000), help="Number of steps at which to save the model."
+)
 FLAGS = flags.FLAGS
 
 
@@ -46,19 +71,21 @@ lr_decay_rate = 0.1
 lr_decay_steps = 5e6
 loss_report_step = 10
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # an instance that transforms face-based graph to edge-based graph. Edge features are auto-computed using "Cartesian" and "Distance"
-transformer = T.Compose([T.FaceToEdge(), T.Cartesian(norm=False), T.Distance(norm=False)])
+transformer = T.Compose(
+    [T.FaceToEdge(), T.Cartesian(norm=False), T.Distance(norm=False)]
+)
 
 
-def predict(simulator: learned_simulator.MeshSimulator,
-            device: str):
-
+def predict(simulator: learned_simulator.MeshSimulator, device: str):
     # Load simulator
     if os.path.exists(FLAGS.model_path + FLAGS.model_file):
         simulator.load(FLAGS.model_path + FLAGS.model_file)
     else:
-        raise Exception(f"Model does not exist at {FLAGS.model_path + FLAGS.model_file}")
+        raise Exception(
+            f"Model does not exist at {FLAGS.model_path + FLAGS.model_file}"
+        )
 
     simulator.to(device)
     simulator.eval()
@@ -68,10 +95,12 @@ def predict(simulator: learned_simulator.MeshSimulator,
         os.makedirs(FLAGS.output_path)
 
     # Use `valid`` set for eval mode if not use `test`
-    split = 'test' if FLAGS.mode == 'rollout' else 'valid'
+    split = "test" if FLAGS.mode == "rollout" else "valid"
 
     # Load trajectory data.
-    ds = data_loader.get_data_loader_by_trajectories(path=f"{FLAGS.data_path}{split}.npz")
+    ds = data_loader.get_data_loader_by_trajectories(
+        path=f"{FLAGS.data_path}{split}.npz"
+    )
 
     # Rollout
     with torch.no_grad():
@@ -81,19 +110,16 @@ def predict(simulator: learned_simulator.MeshSimulator,
             print(f"Rollout for example{i}: loss = {prediction_data['mean_loss']}")
 
             # Save rollout in testing
-            if FLAGS.mode == 'rollout':
-                filename = f'{FLAGS.rollout_filename}_{i}.pkl'
+            if FLAGS.mode == "rollout":
+                filename = f"{FLAGS.rollout_filename}_{i}.pkl"
                 filename = os.path.join(FLAGS.output_path, filename)
-                with open(filename, 'wb') as f:
+                with open(filename, "wb") as f:
                     pickle.dump(prediction_data, f)
 
     print(f"Mean loss on rollout prediction: {prediction_data['mean_loss']}")
 
-def rollout(simulator: learned_simulator.MeshSimulator,
-            features,
-            nsteps: int,
-            device):
 
+def rollout(simulator: learned_simulator.MeshSimulator, features, nsteps: int, device):
     node_coords = features[0]  # (timesteps, nnode, ndims)
     node_types = features[1]  # (timesteps, nnode, )
     velocities = features[2]  # (timesteps, nnode, ndims)
@@ -108,18 +134,29 @@ def rollout(simulator: learned_simulator.MeshSimulator,
     mask = None
 
     for step in tqdm(range(nsteps), total=nsteps):
-
         # Predict next velocity
         # First, obtain data to form a graph
         current_node_coords = node_coords[step]
         current_node_type = node_types[step]
         current_pressure = pressures[step]
         current_cell = cells[step]
-        current_time_idx_vector = torch.tensor(np.full(current_node_coords.shape[0], step)).to(torch.float32).contiguous()
+        current_time_idx_vector = (
+            torch.tensor(np.full(current_node_coords.shape[0], step))
+            .to(torch.float32)
+            .contiguous()
+        )
         next_ground_truth_velocities = ground_truth_velocities[step].to(device)
         current_example = (
-            (current_node_coords, current_node_type, current_velocities, current_pressure, current_cell, current_time_idx_vector),
-            next_ground_truth_velocities)
+            (
+                current_node_coords,
+                current_node_type,
+                current_velocities,
+                current_pressure,
+                current_cell,
+                current_time_idx_vector,
+            ),
+            next_ground_truth_velocities,
+        )
 
         # Make graph
         graph = datas_to_graph(current_example, dt=dt, device=device)
@@ -131,11 +168,17 @@ def rollout(simulator: learned_simulator.MeshSimulator,
             current_velocities=graph.x[:, 1:3],
             node_type=graph.x[:, 0],
             edge_index=graph.edge_index,
-            edge_features=graph.edge_attr)
+            edge_features=graph.edge_attr,
+        )
 
         # Apply mask.
-        if mask is None:  # only compute mask for the first timestep, since it will be the same for the later timesteps
-            mask = torch.logical_or(current_node_type == NodeType.NORMAL, current_node_type == NodeType.OUTFLOW)
+        if (
+            mask is None
+        ):  # only compute mask for the first timestep, since it will be the same for the later timesteps
+            mask = torch.logical_or(
+                current_node_type == NodeType.NORMAL,
+                current_node_type == NodeType.OUTFLOW,
+            )
             mask = torch.logical_not(mask)
             mask = mask.squeeze(1)
         # Maintain previous velocity if node_type is not (Normal or Outflow).
@@ -152,19 +195,18 @@ def rollout(simulator: learned_simulator.MeshSimulator,
     loss = (predictions - ground_truth_velocities.to(device)) ** 2
 
     output_dict = {
-        'initial_velocities': initial_velocities.cpu().numpy(),
-        'predicted_rollout': predictions.cpu().numpy(),
-        'ground_truth_rollout': ground_truth_velocities.cpu().numpy(),
-        'node_coords': node_coords.cpu().numpy(),
-        'node_types': node_types.cpu().numpy(),
-        'mean_loss': loss.mean().cpu().numpy()
+        "initial_velocities": initial_velocities.cpu().numpy(),
+        "predicted_rollout": predictions.cpu().numpy(),
+        "ground_truth_rollout": ground_truth_velocities.cpu().numpy(),
+        "node_coords": node_coords.cpu().numpy(),
+        "node_types": node_types.cpu().numpy(),
+        "mean_loss": loss.mean().cpu().numpy(),
     }
 
     return output_dict
 
 
 def train(simulator):
-
     print(f"device = {device}")
 
     # Initiate training.
@@ -179,7 +221,6 @@ def train(simulator):
 
     # If model_path does exist and model_file and train_state_file exist continue training.
     if FLAGS.model_file is not None:
-
         if FLAGS.model_file == "latest" and FLAGS.train_state_file == "latest":
             # find the latest model, assumes model and train_state files are in step.
             fnames = glob.glob(f"{model_path}*model*pt")
@@ -193,7 +234,9 @@ def train(simulator):
             FLAGS.model_file = f"model-{max_model_number}.pt"
             FLAGS.train_state_file = f"train_state-{max_model_number}.pt"
 
-        if os.path.exists(model_path + FLAGS.model_file) and os.path.exists(model_path + FLAGS.train_state_file):
+        if os.path.exists(model_path + FLAGS.model_file) and os.path.exists(
+            model_path + FLAGS.train_state_file
+        ):
             # load model
             simulator.load(model_path + FLAGS.model_file)
 
@@ -207,16 +250,19 @@ def train(simulator):
             step = train_state["global_train_state"].pop("step")
         else:
             raise FileNotFoundError(
-                f"Specified model_file {model_path + FLAGS.model_file} and train_state_file {model_path + FLAGS.train_state_file} not found.")
+                f"Specified model_file {model_path + FLAGS.model_file} and train_state_file {model_path + FLAGS.train_state_file} not found."
+            )
 
     simulator.train()
     simulator.to(device)
 
     # Load data
-    ds = data_loader.get_data_loader_by_samples(path=f'{FLAGS.data_path}/{FLAGS.mode}.npz',
-                                                input_length_sequence=INPUT_SEQUENCE_LENGTH,
-                                                dt=dt,
-                                                batch_size=FLAGS.batch_size)
+    ds = data_loader.get_data_loader_by_samples(
+        path=f"{FLAGS.data_path}/{FLAGS.mode}.npz",
+        input_length_sequence=INPUT_SEQUENCE_LENGTH,
+        dt=dt,
+        batch_size=FLAGS.batch_size,
+    )
 
     not_reached_nsteps = True
     try:
@@ -233,7 +279,9 @@ def train(simulator):
                 target_velocities = graph.y
 
                 # Get velocity noise
-                velocity_noise = get_velocity_noise(graph, noise_std=noise_std, device=device)
+                velocity_noise = get_velocity_noise(
+                    graph, noise_std=noise_std, device=device
+                )
 
                 # Predict dynamics
                 pred_acc, target_acc = simulator.predict_acceleration(
@@ -242,11 +290,16 @@ def train(simulator):
                     edge_index=edge_index,
                     edge_features=edge_features,
                     target_velocities=target_velocities,
-                    velocity_noise=velocity_noise)
+                    velocity_noise=velocity_noise,
+                )
 
                 # Compute loss
-                mask = torch.logical_or(node_types == NodeType.NORMAL, node_types == NodeType.OUTFLOW)
-                errors = ((pred_acc - target_acc)**2)[mask]  # only compute errors if node_types is NORMAL or OUTFLOW
+                mask = torch.logical_or(
+                    node_types == NodeType.NORMAL, node_types == NodeType.OUTFLOW
+                )
+                errors = ((pred_acc - target_acc) ** 2)[
+                    mask
+                ]  # only compute errors if node_types is NORMAL or OUTFLOW
                 loss = torch.mean(errors)
 
                 # Computes the gradient of loss
@@ -257,19 +310,24 @@ def train(simulator):
                 # Update learning rate
                 lr_new = lr_init * lr_decay_rate ** (step / lr_decay_steps) + 1e-6
                 for param in optimizer.param_groups:
-                    param['lr'] = lr_new
+                    param["lr"] = lr_new
 
                 if step % loss_report_step == 0:
-                    print(f"Training step: {step}/{FLAGS.ntraining_steps}. Loss: {loss}.")
+                    print(
+                        f"Training step: {step}/{FLAGS.ntraining_steps}. Loss: {loss}."
+                    )
 
                 # Save model state
                 if step % FLAGS.nsave_steps == 0:
-                    simulator.save(model_path + 'model-' + str(step) + '.pt')
-                    train_state = dict(optimizer_state=optimizer.state_dict(), global_train_state={"step": step})
+                    simulator.save(model_path + "model-" + str(step) + ".pt")
+                    train_state = dict(
+                        optimizer_state=optimizer.state_dict(),
+                        global_train_state={"step": step},
+                    )
                     torch.save(train_state, f"{model_path}train_state-{step}.pt")
 
                 # Complete training
-                if (step >= FLAGS.ntraining_steps):
+                if step >= FLAGS.ntraining_steps:
                     not_reached_nsteps = False
                     break
 
@@ -280,11 +338,10 @@ def train(simulator):
 
 
 def main(_):
-
     # Set device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
-        device = torch.device(f'cuda:{int(FLAGS.cuda_device_number)}')
+        device = torch.device(f"cuda:{int(FLAGS.cuda_device_number)}")
 
     # load simulator
     simulator = learned_simulator.MeshSimulator(
@@ -297,12 +354,14 @@ def main(_):
         mlp_hidden_dim=128,
         nnode_types=3,
         node_type_embedding_size=9,
-        device=device)
+        device=device,
+    )
 
-    if FLAGS.mode == 'train':
+    if FLAGS.mode == "train":
         train(simulator)
-    elif FLAGS.mode in ['valid', 'rollout']:
+    elif FLAGS.mode in ["valid", "rollout"]:
         predict(simulator, device)
+
 
 if __name__ == "__main__":
     app.run(main)
