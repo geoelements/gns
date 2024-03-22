@@ -21,9 +21,6 @@ pip install -r requirements.txt
 # test env
 # --------
 
-echo 'which python -> venv'
-which python
-
 # Check if the first command line argument is "--run-tests=true"
 if [ "$1" = "--run-tests=true" ]; then
   echo 'Running tests...'
@@ -44,8 +41,6 @@ else
   echo "Skipping tests. To run tests, use the argument --run-tests=true"
 fi
 
-
 # Clean up
 # --------
 #rm -r venv
-
