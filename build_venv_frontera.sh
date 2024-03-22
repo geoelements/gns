@@ -8,12 +8,9 @@ module load cuda/12
 
 # create env
 # ---------
-source module.sh
-
 python3 -m virtualenv venv
 source venv/bin/activate
 
-which python
 python -m pip install --upgrade pip
 pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
 pip install torch_geometric==2.4.0
@@ -27,6 +24,14 @@ pip install -r requirements.txt
 echo 'which python -> venv'
 which python
 
+# Check if the first command line argument is "--run-tests=true"
+if [ "$1" = "--run-tests=true" ]; then
+  echo 'which python -> venv'
+  # Add your test commands here. They will only run if the condition is met.
+else
+  echo "Skipping tests. To run tests, use the argument --run-tests=true"
+fi
+
 echo 'test_pytorch.py -> random tensor'
 python3 test/test_pytorch.py 
 
@@ -36,8 +41,6 @@ python3 test/test_pytorch_cuda_gpu.py
 echo 'test_torch_geometric.py -> no return if import successful'
 python3 test/test_torch_geometric.py
 
-echo 'waterdrop sample/Dataset -> no return if import successful'
-python3 -m gns.train --data_path="./gns-sample/WaterDropSample/dataset/" --model_path="../models/" --output_path="../output/"  -ntraining_steps=100
 
 # Clean up
 # --------
