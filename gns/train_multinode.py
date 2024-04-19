@@ -48,7 +48,7 @@ flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps
 flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
 
 #new argument for multinode training
-flags.DEFINE_integer("local-rank", 0, help='local rank for distributed training')s
+flags.DEFINE_integer("local-rank", 0, help='local rank for distributed training')
 
 FLAGS = flags.FLAGS
 
