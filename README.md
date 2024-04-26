@@ -303,9 +303,9 @@ source start_venv.sh
 ### GNS training in parallel
 GNS can be trained in parallel on multiple nodes with multiple GPUs.
 #### GNS Scailing results
-![RTX-waterdrop](docs/img/RTX-5000, WaterDropSample.png)
+![RTXwaterdrop](docs/img/RTX-5000_WaterDropSample.png)
 > GNS scaling results on [TACC Frontera GPU nodes](https://docs.tacc.utexas.edu/hpc/frontera/#table3) with RTX-5000 GPUs.
-![A100-sand3d](docs/img/A100, Barrier_Interaction.png)
+![A100sand3d](docs/img/A100_Barrier_Interaction.png)
 > GNS scaling result on [TACC lonestar6 GPU nodes](https://docs.tacc.utexas.edu/hpc/lonestar6/#table2) with A100 GPUs.
 #### Usage
 ##### Single Node, Multi-GPU
