@@ -300,6 +300,28 @@ sh ./build_venv.sh
 source start_venv.sh 
 ```
 
+### GNS training in parallel
+GNS can be trained in parallel on multiple nodes with multiple GPUs.
+#### GNS Scailing results
+![RTX-waterdrop](docs/img/RTX-5000, WaterDropSample.png)
+> GNS scaling results on [TACC Frontera GPU nodes](https://docs.tacc.utexas.edu/hpc/frontera/#table3) with RTX-5000 GPUs.
+![A100-sand3d](docs/img/A100, Barrier_Interaction.png)
+> GNS scaling result on [TACC lonestar6 GPU nodes](https://docs.tacc.utexas.edu/hpc/lonestar6/#table2) with A100 GPUs.
+#### Usage
+##### Single Node, Multi-GPU
+'''shell
+python -m torch.distributed.launch --nnodes=1  --nproc_per_node=[GPU_PER_NODE] --node_rank=[LOCAL_RANK] --master_addr=[MAIN_RANK] gns/train_multinode.py [ARGS] "
+'''
+
+##### Multi-node, Multi-GPU
+On each node, run
+'''shell
+python -m torch.distributed.launch --nnodes=[NNODES]  --nproc_per_node=[GPU_PER_NODE] --node_rank=[LOCAL_RANK] --master_addr=[MAIN_RANK ]gns/train_multinode.py [ARGS] "
+'''
+
+
+
+
 ### Inspiration
 PyTorch version of Graph Network Simulator and Mesh Graph Network Simulator are based on:
 * [https://arxiv.org/abs/2002.09405](https://arxiv.org/abs/2002.09405) and [https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate](https://github.com/deepmind/deepmind-research/tree/master/learning_to_simulate)

@@ -27,4 +27,4 @@ ROLLOUT_PATH="${TMP_DIR}/${DATASET_NAME}/rollout/"
 NODEFILE=/tmp/hostfile
 scontrol show hostnames  > $NODEFILE
 NNODES=$(< $NODEFILE wc -l)
-mpiexec.hydra -np $NNODES -ppn 1 /work/07980/sli4/ls6/gns/slurm_scripts/train_gns_parallel_push.sh --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10000 --mode='train'
+mpiexec.hydra -np $NNODES -ppn 1 /work/07980/sli4/ls6/gns/slurm_scripts/train_gns_parallel.sh --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10000 --mode='train'
