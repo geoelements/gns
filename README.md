@@ -305,8 +305,10 @@ GNS can be trained in parallel on multiple nodes with multiple GPUs.
 #### GNS Scailing results
 ![RTXwaterdrop](docs/img/RTX-5000_WaterDropSample.png)
 > GNS scaling results on [TACC Frontera GPU nodes](https://docs.tacc.utexas.edu/hpc/frontera/#table3) with RTX-5000 GPUs.
+
 ![A100sand3d](docs/img/A100_Barrier_Interaction.png)
 > GNS scaling result on [TACC lonestar6 GPU nodes](https://docs.tacc.utexas.edu/hpc/lonestar6/#table2) with A100 GPUs.
+
 #### Usage
 ##### Single Node, Multi-GPU
 '''shell
