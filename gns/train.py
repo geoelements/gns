@@ -472,7 +472,7 @@ def _get_simulator(
       nnode_in=nnode_in,
       nedge_in=nedge_in,
       latent_dim=128,
-      nmessage_passing_steps=2,
+      nmessage_passing_steps=10,
       nmlp_layers=2,
       mlp_hidden_dim=128,
       connectivity_radius=metadata['default_connectivity_radius'],
