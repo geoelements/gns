@@ -43,7 +43,7 @@ flags.DEFINE_float('lr_decay', 0.1, help='Learning rate decay.')
 flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps.')
 
 flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
-flags.DEFINE_integer("n_gpus", None, help="The number of GPUs to utilize for training.")
+flags.DEFINE_integer("n_gpus", 1, help="The number of GPUs to utilize for training.")
 
 FLAGS = flags.FLAGS
 
