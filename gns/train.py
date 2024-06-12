@@ -21,17 +21,6 @@ from gns import reading_utils
 from gns import data_loader
 from gns import distribute
 
-import random
-seed=42
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-torch.backends.cudnn.deterministic = True
-random.seed(seed)
-np.random.seed(seed)
-torch.use_deterministic_algorithms(True)
-# do this on a bash shell
-# export CUBLAS_WORKSPACE_CONFIG=:4096:8
-
 flags.DEFINE_enum(
     'mode', 'train', ['train', 'valid', 'rollout'],
     help='Train model, validation or rollout evaluation.')
@@ -411,6 +400,16 @@ def train(rank, flags, world_size, device):
             material_property=material_property.to(device) if n_features == 3 else None
           )
 
+        # Validation
+        if flags["validation_interval"] is not None:
+          sampled_valid_example = next(iter(dl_valid))
+          if step % flags["validation_interval"] == 0:
+              valid_loss = validation(
+                simulator, sampled_valid_example, n_features, flags, rank, device_id)
+              print(f"Validation loss at {step}: {valid_loss.item()}")
+        else:
+          valid_loss = None
+
         # Calculate the loss and mask out loss on kinematic particles
         loss = (pred_acc - target_acc) ** 2
         loss = loss.sum(dim=-1)
@@ -432,13 +431,9 @@ def train(rank, flags, world_size, device):
           param['lr'] = lr_new
 
         # Complete training
-        # if (step >= flags["ntraining_steps"]):
         if (epoch >= flags["ntraining_steps"]):
           not_reached_nsteps = False
           break
-
-        # if epoch == 0:
-        #   print(f"step: {step}, loss: {loss}, total_loss: {total_loss}")
 
         step += 1
 
@@ -635,9 +630,6 @@ def main(_):
     os.environ["MASTER_PORT"] = "29500"
 
   myflags = reading_utils.flags_to_dict(FLAGS)
-
-  myflags["validation_interval"] = 3
-  myflags["nsave_steps"] = 5
 
   if FLAGS.mode == 'train':
     # If model_path does not exist create new directory.
