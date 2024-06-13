@@ -284,7 +284,6 @@ ROLLOUT_PATH="${TMP_DIR}/${DATASET_NAME}/rollout/"
 python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10
 ```
 
-
 ### Building GNS environment on TACC (LS6 and Frontera)
 
 - to setup a virtualenv
@@ -300,29 +299,35 @@ sh ./build_venv.sh
 source start_venv.sh 
 ```
 
-### GNS training in parallel
+### Building GNS on MacOS
+```shell
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip3 install torch_geometric
+pip3 install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.3.0+cpu.html
+pip3 install -r requirements.txt
+```
+
+## GNS training in parallel
 GNS can be trained in parallel on multiple nodes with multiple GPUs.
-#### GNS Scailing results
+
+### GNS Scaling results
 ![RTXwaterdrop](docs/img/RTX-5000_WaterDropSample.png)
 > GNS scaling results on [TACC Frontera GPU nodes](https://docs.tacc.utexas.edu/hpc/frontera/#table3) with RTX-5000 GPUs.
 
 ![A100sand3d](docs/img/A100_Barrier_Interaction.png)
 > GNS scaling result on [TACC lonestar6 GPU nodes](https://docs.tacc.utexas.edu/hpc/lonestar6/#table2) with A100 GPUs.
 
-#### Usage
-##### Single Node, Multi-GPU
+### Usage
+#### Single Node, Multi-GPU
 ```shell
 python -m torch.distributed.launch --nnodes=1  --nproc_per_node=[GPU_PER_NODE] --node_rank=[LOCAL_RANK] --master_addr=[MAIN_RANK] gns/train_multinode.py [ARGS] 
 ```
 
-##### Multi-node, Multi-GPU
+#### Multi-node, Multi-GPU
 On each node, run
 ```shell
 python -m torch.distributed.launch --nnodes=[NNODES]  --nproc_per_node=[GPU_PER_NODE] --node_rank=[LOCAL_RANK] --master_addr=[MAIN_RANK ]gns/train_multinode.py [ARGS] 
 ```
-
-
-
 
 ### Inspiration
 PyTorch version of Graph Network Simulator and Mesh Graph Network Simulator are based on:
