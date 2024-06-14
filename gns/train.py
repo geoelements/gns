@@ -36,7 +36,6 @@ flags.DEFINE_string('train_state_file', 'train_state.pt', help=('Train state fil
 flags.DEFINE_integer('ntraining_steps', int(2E7), help='Number of training steps.')
 flags.DEFINE_integer('validation_interval', None, help='Validation interval. Set `None` if validation loss is not needed')
 flags.DEFINE_integer('nsave_steps', int(5000), help='Number of steps at which to save the model.')
-flags.DEFINE_integer('n_epochs', int(2000), help='Number of epochs.')
 
 # Learning rate parameters
 flags.DEFINE_float('lr_init', 1e-4, help='Initial learning rate.')
@@ -249,7 +248,8 @@ def optimizer_to(optim, device):
 
 
 
-def save_model_and_train_state(rank, device, simulator, flags, step, epoch, optimizer, train_loss_hist, valid_loss_hist):
+def save_model_and_train_state(rank, device, simulator, flags, step, epoch, optimizer,
+                                train_loss, valid_loss, train_loss_hist, valid_loss_hist):
   """Save model state
   
   Args:
@@ -260,8 +260,10 @@ def save_model_and_train_state(rank, device, simulator, flags, step, epoch, opti
     step: step
     epoch: epoch
     optimizer: optimizer
-    train_loss_hist: train_loss_hist
-    valid_loss_hist: valid_loss_hist
+    train_loss: training loss at current step
+    valid_loss: validation loss at current step
+    train_loss_hist: training loss history at each epoch
+    valid_loss_hist: validation loss history at each epoch
   """
   if rank == 0 or device == torch.device("cpu"):
       if device == torch.device("cpu"):
@@ -273,9 +275,10 @@ def save_model_and_train_state(rank, device, simulator, flags, step, epoch, opti
                           global_train_state={
                             "step": step, 
                             "epoch": epoch,
-                            "train_loss_hist": train_loss_hist,
-                            "valid_loss_hist": valid_loss_hist
+                            "train_loss": train_loss,
+                            "valid_loss": valid_loss
                             },
+                          loss_history={"train": train_loss_hist, "valid": valid_loss_hist}
                           )
       torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
       
@@ -307,7 +310,12 @@ def train(rank, flags, world_size, device):
 
   # Initialize training state
   step = 0
-  initial_epoch = 0
+  epoch = 0
+
+  valid_loss = None
+  epoch_train_loss = 0
+  epoch_valid_loss = None
+
   train_loss_hist = []
   valid_loss_hist = []
 
@@ -344,10 +352,10 @@ def train(rank, flags, world_size, device):
       optimizer_to(optimizer, device_id)
       
       # set global train state
-      step = train_state["global_train_state"].pop("step")
-      initial_epoch = train_state["global_train_state"].pop("epoch")
-      train_loss_hist = train_state["global_train_state"].pop("train_loss_hist")
-      valid_loss_hist = train_state["global_train_state"].pop("valid_loss_hist")
+      step = train_state["global_train_state"]["step"]
+      epoch = train_state["global_train_state"]["epoch"]
+      train_loss_hist = train_state["loss_history"]["train"]
+      valid_loss_hist = train_state["loss_history"]["valid"]
 
     else:
       msg = f'Specified model_file {flags["model_path"] + flags["model_file"]} and train_state_file {flags["model_path"] + flags["train_state_file"]} not found.'
@@ -386,12 +394,9 @@ def train(rank, flags, world_size, device):
   print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
 
   try:
-    for epoch in range(initial_epoch, flags["n_epochs"]):
+    while step < flags["ntraining_steps"]:
       if device == torch.device("cuda"):
         torch.distributed.barrier()
-      
-      total_loss = 0
-      current_loss = 0
 
       for example in dl:  
         # ((position, particle_type, material_property, n_particles_per_example), labels) are in dl
@@ -433,8 +438,6 @@ def train(rank, flags, world_size, device):
               valid_loss = validation(
                 simulator, sampled_valid_example, n_features, flags, rank, device_id)
               print(f"Validation loss at {step}: {valid_loss.item()}")
-        else:
-          valid_loss = None
 
         # Calculate the loss and mask out loss on kinematic particles
         loss = (pred_acc - target_acc) ** 2
@@ -444,8 +447,8 @@ def train(rank, flags, world_size, device):
                          loss, torch.zeros_like(loss))
         loss = loss.sum() / num_non_kinematic
 
-        current_loss = loss.item()
-        total_loss += current_loss
+        train_loss = loss.item()
+        epoch_train_loss += train_loss
 
         # Computes the gradient of loss
         optimizer.zero_grad()
@@ -457,48 +460,55 @@ def train(rank, flags, world_size, device):
         for param in optimizer.param_groups:
           param['lr'] = lr_new
      
-        print(f'rank = {rank}, epoch = {epoch}, step = {step}/{flags["ntraining_steps"]}, loss = {current_loss}', flush=True)
+        print(f'rank = {rank}, epoch = {epoch}, step = {step}/{flags["ntraining_steps"]}, loss = {train_loss}', flush=True)
+
+        # Save model state
+        if rank == 0 or device == torch.device("cpu"):
+          if step % flags["nsave_steps"] == 0:
+            save_model_and_train_state(rank, device, simulator, flags, step, epoch, 
+                                       optimizer, train_loss, valid_loss, train_loss_hist, valid_loss_hist)
 
         step += 1
-
         if step >= flags["ntraining_steps"]:
-          break
-      
+            break
+
       # Epoch level statistics
-      total_loss /= len(dl)
-      total_loss = torch.tensor([total_loss]).to(device_id)
+      
+      # Training loss at epoch
+      epoch_train_loss /= len(dl)
+      epoch_train_loss = torch.tensor([epoch_train_loss]).to(device_id)
       if device == torch.device("cuda"):
-        torch.distributed.reduce(total_loss, dst=0, op=torch.distributed.ReduceOp.SUM)
-        total_loss /= world_size
+        torch.distributed.reduce(epoch_train_loss, dst=0, op=torch.distributed.ReduceOp.SUM)
+        epoch_train_loss /= world_size
 
-      train_loss_hist.append((epoch, total_loss.item()))
-      if rank == 0 or device == torch.device("cpu"):
-        print(f'Training loss at epoch {epoch} and step {step} = {total_loss.item()}.', flush=True)
+      train_loss_hist.append((epoch, epoch_train_loss.item()))
 
-      # Validation
+      # Validation loss at epoch
       if flags["validation_interval"] is not None:
-        valid_loss = validate(simulator, dl_valid, n_features, flags, rank, device_id)
+        epoch_valid_loss = validate(simulator, dl_valid, n_features, flags, rank, device_id)
         if device == torch.device("cuda"):
-          torch.distributed.reduce(valid_loss, dst=0, op=torch.distributed.ReduceOp.SUM)
-          valid_loss /= world_size
+          torch.distributed.reduce(epoch_valid_loss, dst=0, op=torch.distributed.ReduceOp.SUM)
+          epoch_valid_loss /= world_size
 
-        valid_loss_hist.append((epoch, valid_loss.item()))
-        if rank == 0 or device == torch.device("cpu"):
-          print(f"Validation loss at epoch {epoch} and step {step} = {valid_loss.item()}.\n", flush=True)
-      else:
-        valid_loss = None
+        valid_loss_hist.append((epoch, epoch_valid_loss.item()))
 
-      # Save model state
-      if epoch > 0 and epoch % flags["nsave_steps"] == 0:
-        save_model_and_train_state(rank, device, simulator, flags, step, epoch, optimizer, train_loss_hist, valid_loss_hist)
+      # Print epoch statistics
+      if rank == 0 or device == torch.device("cpu"):
+        print(f'Epoch {epoch}, training loss: {epoch_train_loss.item()}')
+        if flags["validation_interval"] is not None:
+          print(f'Epoch {epoch}, validation loss: {epoch_valid_loss.item()}')
+      
+      # Reset epoch training loss
+      epoch_train_loss = 0
+      epoch += 1
 
       if step >= flags["ntraining_steps"]:
-          break
-
+        break 
+      
   except KeyboardInterrupt:
     pass
 
-  save_model_and_train_state(rank, device, simulator, flags, step, epoch, optimizer, train_loss_hist, valid_loss_hist)
+  save_model_and_train_state(rank, device, simulator, flags, step, epoch, optimizer, train_loss, valid_loss, train_loss_hist, valid_loss_hist)
 
   if torch.cuda.is_available():
     distribute.cleanup()
