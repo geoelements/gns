@@ -302,6 +302,8 @@ def train(rank, flags, world_size, device):
   else:
     simulator = _get_simulator(metadata, flags["noise_std"], flags["noise_std"], device)
     optimizer = torch.optim.Adam(simulator.parameters(), lr=flags["lr_init"] * world_size)
+
+  # Initialize training state
   step = 0
   epoch = 0
 
@@ -346,36 +348,32 @@ def train(rank, flags, world_size, device):
   simulator.train()
   simulator.to(device_id)
 
-  if device == torch.device("cuda"):
-    dl = distribute.get_data_distributed_dataloader_by_samples(
+  # Get data loader
+  get_data_loader = (
+    distribute.get_data_distributed_dataloader_by_samples
+    if device == torch.device("cuda")
+    else data_loader.get_data_loader_by_samples
+  )
+
+  # Load training data
+  dl = get_data_loader(
       path=f'{flags["data_path"]}train.npz',
       input_length_sequence=INPUT_SEQUENCE_LENGTH,
-      batch_size=flags["batch_size"]
-    )
-  else:
-    dl = data_loader.get_data_loader_by_samples(
-      path=f'{flags["data_path"]}train.npz',
-      input_length_sequence=INPUT_SEQUENCE_LENGTH,
-      batch_size=flags["batch_size"]
-    )
+      batch_size=flags["batch_size"],
+  )
   n_features = len(dl.dataset._data[0])
 
+  # Load validation data
   if flags["validation_interval"] is not None:
-    if device == torch.device("cuda"):
-      dl_valid = distribute.get_data_distributed_dataloader_by_samples(
-        path=f'{flags["data_path"]}valid.npz',
-        input_length_sequence=INPUT_SEQUENCE_LENGTH,
-        batch_size=flags["batch_size"]
+      dl_valid = get_data_loader(
+          path=f'{flags["data_path"]}valid.npz',
+          input_length_sequence=INPUT_SEQUENCE_LENGTH,
+          batch_size=flags["batch_size"],
       )
-    else:
-      dl_valid = data_loader.get_data_loader_by_samples(
-        path=f'{flags["data_path"]}valid.npz',
-        input_length_sequence=INPUT_SEQUENCE_LENGTH,
-        batch_size=flags["batch_size"]
-      )
-
-    if len(dl_valid.dataset._data[0]) != n_features:
-      raise ValueError(f"`n_features` of `valid.npz` and `train.npz` should be the same")
+      if len(dl_valid.dataset._data[0]) != n_features:
+          raise ValueError(
+              f"`n_features` of `valid.npz` and `train.npz` should be the same"
+          )
 
   print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
 
@@ -390,7 +388,8 @@ def train(rank, flags, world_size, device):
       total_loss = 0
       current_loss = 0
 
-      for example in dl:  # ((position, particle_type, material_property, n_particles_per_example), labels) are in dl
+      for example in dl:  
+        # ((position, particle_type, material_property, n_particles_per_example), labels) are in dl
         position = example[0][0].to(device_id)
         particle_type = example[0][1].to(device_id)
         if n_features == 3:  # if dl includes material_property
@@ -411,26 +410,17 @@ def train(rank, flags, world_size, device):
         non_kinematic_mask = (particle_type != KINEMATIC_PARTICLE_ID).clone().detach().to(device_id)
         sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
 
-        # Get the predictions and target accelerations.
-        if device == torch.device("cuda"):
-          pred_acc, target_acc = simulator.module.predict_accelerations(
-            next_positions=labels.to(rank),
-            position_sequence_noise=sampled_noise.to(rank),
-            position_sequence=position.to(rank),
-            nparticles_per_example=n_particles_per_example.to(rank),
-            particle_types=particle_type.to(rank),
-            material_property=material_property.to(rank) if n_features == 3 else None
-          )
-        else:
-          pred_acc, target_acc = simulator.predict_accelerations(
-            next_positions=labels.to(device),
-            position_sequence_noise=sampled_noise.to(device),
-            position_sequence=position.to(device),
-            nparticles_per_example=n_particles_per_example.to(device),
-            particle_types=particle_type.to(device),
-            material_property=material_property.to(device) if n_features == 3 else None
-          )
-
+        # Get the predictions and target accelerations
+        device_or_rank = rank if device == torch.device("cuda") else device
+        pred_acc, target_acc = (simulator.module.predict_accelerations if device == torch.device("cuda") else simulator.predict_accelerations)(
+            next_positions=labels.to(device_or_rank),
+            position_sequence_noise=sampled_noise.to(device_or_rank),
+            position_sequence=position.to(device_or_rank),
+            nparticles_per_example=n_particles_per_example.to(device_or_rank),
+            particle_types=particle_type.to(device_or_rank),
+            material_property=material_property.to(device_or_rank) if n_features == 3 else None
+        )
+        
         # Validation
         if flags["validation_interval"] is not None:
           sampled_valid_example = next(iter(dl_valid))
@@ -465,7 +455,6 @@ def train(rank, flags, world_size, device):
         print(f'rank = {rank}, step = {step}, epoch = {epoch}, loss = {current_loss}', flush=True)
 
         step += 1
-
       
       total_loss /= len(dl)
       total_loss = torch.tensor([total_loss]).to(device_id)
