@@ -246,7 +246,22 @@ def optimizer_to(optim, device):
           if subparam._grad is not None:
             subparam._grad.data = subparam._grad.data.to(device)
 
+def acceleration_loss(pred_acc, target_acc, non_kinematic_mask):
+  """
+  Compute the loss between predicted and target accelerations.
 
+  Args:
+    pred_acc: Predicted accelerations.
+    target_acc: Target accelerations.
+    non_kinematic_mask: Mask for kinematic particles.
+  """
+  loss = (pred_acc - target_acc) ** 2
+  loss = loss.sum(dim=-1)
+  num_non_kinematic = non_kinematic_mask.sum()
+  loss = torch.where(non_kinematic_mask.bool(),
+                    loss, torch.zeros_like(loss))
+  loss = loss.sum() / num_non_kinematic
+  return loss
 
 def save_model_and_train_state(rank, device, simulator, flags, step, epoch, optimizer,
                                 train_loss, valid_loss, train_loss_hist, valid_loss_hist):
@@ -440,12 +455,7 @@ def train(rank, flags, world_size, device):
               print(f"Validation loss at {step}: {valid_loss.item()}")
 
         # Calculate the loss and mask out loss on kinematic particles
-        loss = (pred_acc - target_acc) ** 2
-        loss = loss.sum(dim=-1)
-        num_non_kinematic = non_kinematic_mask.sum()
-        loss = torch.where(non_kinematic_mask.bool(),
-                         loss, torch.zeros_like(loss))
-        loss = loss.sum() / num_non_kinematic
+        loss = acceleration_loss(pred_acc, target_acc, non_kinematic_mask)
 
         train_loss = loss.item()
         epoch_train_loss += train_loss
@@ -598,33 +608,22 @@ def validation(
   sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
 
   # Do evaluation for the validation data
-  if isinstance(device_id, int):
-    with torch.no_grad():
-      pred_acc, target_acc = simulator.module.predict_accelerations(
-        next_positions=labels.to(rank),
-        position_sequence_noise=sampled_noise.to(rank),
-        position_sequence=position.to(rank),
-        nparticles_per_example=n_particles_per_example.to(rank),
-        particle_types=particle_type.to(rank),
-        material_property=material_property.to(rank) if n_features == 3 else None
+  device_or_rank = rank if isinstance(device_id, int) else device_id
+  # Select the appropriate prediction function
+  predict_accelerations = simulator.module.predict_accelerations if isinstance(device_id, int) else simulator.predict_accelerations
+  # Get the predictions and target accelerations
+  with torch.no_grad():
+      pred_acc, target_acc = predict_accelerations(
+          next_positions=labels.to(device_or_rank),
+          position_sequence_noise=sampled_noise.to(device_or_rank),
+          position_sequence=position.to(device_or_rank),
+          nparticles_per_example=n_particles_per_example.to(device_or_rank),
+          particle_types=particle_type.to(device_or_rank),
+          material_property=material_property.to(device_or_rank) if n_features == 3 else None
       )
-  else:
-    pred_acc, target_acc = simulator.predict_accelerations(
-      next_positions=labels.to(device_id),
-      position_sequence_noise=sampled_noise.to(device_id),
-      position_sequence=position.to(device_id),
-      nparticles_per_example=n_particles_per_example.to(device_id),
-      particle_types=particle_type.to(device_id),
-      material_property=material_property.to(device_id) if n_features == 3 else None
-    )
 
   # Compute loss
-  loss = (pred_acc - target_acc) ** 2
-  loss = loss.sum(dim=-1)
-  num_non_kinematic = non_kinematic_mask.sum()
-  loss = torch.where(non_kinematic_mask.bool(),
-                     loss, torch.zeros_like(loss))
-  loss = loss.sum() / num_non_kinematic
+  loss = acceleration_loss(pred_acc, target_acc, non_kinematic_mask)
 
   return loss
 
