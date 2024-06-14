@@ -483,9 +483,10 @@ def train(rank, flags, world_size, device):
       
       # Reset epoch training loss
       epoch_train_loss = 0
+      if steps_per_epoch >= len(dl):
+        epoch += 1
       steps_per_epoch = 0
-      epoch += 1
-
+      
       if step >= flags["ntraining_steps"]:
         break 
       
