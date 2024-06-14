@@ -18,9 +18,9 @@ MeshNet is a scalable surrogate simulator for any mesh-based models like Finite 
 > Training GNS/MeshNet on simulation data
 ```shell
 # For particulate domain,
-python3 -m gns.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --ntraining_steps=100
+python3 -m gns.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --n_training_steps=100
 # For mesh-based domain,
-python3 -m meshnet.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --ntraining_steps=100
+python3 -m meshnet.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --n_training_steps=100
 ```
 
 > Resume training
@@ -29,9 +29,9 @@ To resume training specify `model_file` and `train_state_file`:
 
 ```shell
 # For particulate domain,
-python3 -m gns.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --model_file="model.pt" --train_state_file="train_state.pt" --ntraining_steps=100
+python3 -m gns.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --model_file="model.pt" --train_state_file="train_state.pt" --n_training_steps=100
 # For mesh-based domain,
-python3 -m meshnet.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --model_file="model.pt" --train_state_file="train_state.pt" --ntraining_steps=100
+python3 -m meshnet.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --model_file="model.pt" --train_state_file="train_state.pt" --n_training_steps=100
 ```
 
 > Rollout prediction
@@ -113,6 +113,10 @@ This flexibility facilitates the evaluation of models at different stages of tra
 Similar to model_file, but for loading the training state (e.g., optimizer state).
 It supports a special value "latest" to automatically select the newest checkpoint file. 
 (e.g., training_state-10000.pt)
+
+**n_epochs (Integer)** 
+
+The total number of epochs to execute.
 
 **ntraining_steps (Integer)** 
 
@@ -281,7 +285,7 @@ DATA_PATH="${TMP_DIR}/${DATASET_NAME}/dataset/"
 MODEL_PATH="${TMP_DIR}/${DATASET_NAME}/models/"
 ROLLOUT_PATH="${TMP_DIR}/${DATASET_NAME}/rollout/"
 
-python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10
+python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --n_training_steps=10
 ```
 
 ### Building GNS environment on TACC (LS6 and Frontera)

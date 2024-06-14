@@ -26,7 +26,7 @@ jobs:
             pytest test/
             echo "Test paths: ${DATA_PATH} ${MODEL_PATH}"
             ls
-            python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=1
+            python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --n_training_steps=100
             echo "Predict rollout"
             ls ./gns-sample/WaterDropSample/models/
             

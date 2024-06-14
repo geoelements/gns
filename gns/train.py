@@ -36,6 +36,7 @@ flags.DEFINE_string('train_state_file', 'train_state.pt', help=('Train state fil
 flags.DEFINE_integer('ntraining_steps', int(2E7), help='Number of training steps.')
 flags.DEFINE_integer('validation_interval', None, help='Validation interval. Set `None` if validation loss is not needed')
 flags.DEFINE_integer('nsave_steps', int(5000), help='Number of steps at which to save the model.')
+flags.DEFINE_integer('n_epochs', int(2000), help='Number of epochs.')
 
 # Learning rate parameters
 flags.DEFINE_float('lr_init', 1e-4, help='Initial learning rate.')
@@ -269,12 +270,13 @@ def save_model_and_train_state(rank, device, simulator, flags, step, epoch, opti
           simulator.module.save(flags["model_path"] + 'model-' + str(step) + '.pt')
 
       train_state = dict(optimizer_state=optimizer.state_dict(),
-                          global_train_state={"step": step},
-                          epoch=epoch,
-                          train_loss_hist=train_loss_hist,
-                          valid_loss_hist=valid_loss_hist,
-                          train_loss=train_loss_hist[-1] if train_loss_hist else None,
-                          valid_loss=valid_loss_hist[-1] if valid_loss_hist else None)
+                          global_train_state={
+                            "step": step, 
+                            "epoch": epoch,
+                            "train_loss_hist": train_loss_hist,
+                            "valid_loss_hist": valid_loss_hist
+                            },
+                          )
       torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
       
 def train(rank, flags, world_size, device):
@@ -305,7 +307,9 @@ def train(rank, flags, world_size, device):
 
   # Initialize training state
   step = 0
-  epoch = 0
+  initial_epoch = 0
+  train_loss_hist = []
+  valid_loss_hist = []
 
   # If model_path does exist and model_file and train_state_file exist continue training.
   if flags["model_file"] is not None:
@@ -332,14 +336,18 @@ def train(rank, flags, world_size, device):
 
       # load train state
       train_state = torch.load(flags["model_path"] + flags["train_state_file"])
+      
       # set optimizer state
       optimizer = torch.optim.Adam(
         simulator.module.parameters() if device == torch.device("cuda") else simulator.parameters())
       optimizer.load_state_dict(train_state["optimizer_state"])
       optimizer_to(optimizer, device_id)
+      
       # set global train state
       step = train_state["global_train_state"].pop("step")
-      epoch = train_state["global_train_state"].pop("epoch")
+      initial_epoch = train_state["global_train_state"].pop("epoch")
+      train_loss_hist = train_state["global_train_state"].pop("train_loss_hist")
+      valid_loss_hist = train_state["global_train_state"].pop("valid_loss_hist")
 
     else:
       msg = f'Specified model_file {flags["model_path"] + flags["model_file"]} and train_state_file {flags["model_path"] + flags["train_state_file"]} not found.'
@@ -378,10 +386,7 @@ def train(rank, flags, world_size, device):
   print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
 
   try:
-    train_loss_hist = []
-    valid_loss_hist = []
-
-    for epoch in range(flags["ntraining_steps"]):
+    for epoch in range(initial_epoch, flags["n_epochs"]):
       if device == torch.device("cuda"):
         torch.distributed.barrier()
       
@@ -452,10 +457,14 @@ def train(rank, flags, world_size, device):
         for param in optimizer.param_groups:
           param['lr'] = lr_new
      
-        print(f'rank = {rank}, step = {step}, epoch = {epoch}, loss = {current_loss}', flush=True)
+        print(f'rank = {rank}, epoch = {epoch}, step = {step}/{flags["ntraining_steps"]}, loss = {current_loss}', flush=True)
 
         step += 1
+
+        if step >= flags["ntraining_steps"]:
+          break
       
+      # Epoch level statistics
       total_loss /= len(dl)
       total_loss = torch.tensor([total_loss]).to(device_id)
       if device == torch.device("cuda"):
@@ -468,15 +477,14 @@ def train(rank, flags, world_size, device):
 
       # Validation
       if flags["validation_interval"] is not None:
-        if epoch % flags["validation_interval"] == 0:
-            valid_loss = validate(simulator, dl_valid, n_features, flags, rank, device_id)
-            if device == torch.device("cuda"):
-              torch.distributed.reduce(valid_loss, dst=0, op=torch.distributed.ReduceOp.SUM)
-              valid_loss /= world_size
+        valid_loss = validate(simulator, dl_valid, n_features, flags, rank, device_id)
+        if device == torch.device("cuda"):
+          torch.distributed.reduce(valid_loss, dst=0, op=torch.distributed.ReduceOp.SUM)
+          valid_loss /= world_size
 
-            valid_loss_hist.append((epoch, valid_loss.item()))
-            if rank == 0 or device == torch.device("cpu"):
-              print(f"Validation loss at epoch {epoch} and step {step} = {valid_loss.item()}.\n", flush=True)
+        valid_loss_hist.append((epoch, valid_loss.item()))
+        if rank == 0 or device == torch.device("cpu"):
+          print(f"Validation loss at epoch {epoch} and step {step} = {valid_loss.item()}.\n", flush=True)
       else:
         valid_loss = None
 
@@ -484,6 +492,8 @@ def train(rank, flags, world_size, device):
       if epoch > 0 and epoch % flags["nsave_steps"] == 0:
         save_model_and_train_state(rank, device, simulator, flags, step, epoch, optimizer, train_loss_hist, valid_loss_hist)
 
+      if step >= flags["ntraining_steps"]:
+          break
 
   except KeyboardInterrupt:
     pass
