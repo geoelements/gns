@@ -476,12 +476,14 @@ def train(rank, flags, world_size, device):
                              epoch=epoch,
                              train_loss_hist=train_loss_hist,
                              valid_loss_hist=valid_loss_hist,
-                             train_loss={"epoch": total_loss[0], "loss": total_loss[1]},
-                             valid_loss={"epoch": valid_loss[0], "loss": valid_loss[1]} if valid_loss is not None else None)
+                             train_loss=total_loss[-1],
+                             valid_loss=valid_loss[1] if valid_loss is not None else None)
           torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
 
   except KeyboardInterrupt:
     pass
+
+  print("Total loss: ", total_loss.item(), " validation loss", valid_loss.item() if valid_loss is not None else None)
 
   if rank == 0 or device == torch.device("cpu"):
     if device == torch.device("cpu"):
@@ -496,8 +498,8 @@ def train(rank, flags, world_size, device):
                        epoch=epoch,
                        train_loss_hist=train_loss_hist,
                        valid_loss_hist=valid_loss_hist,
-                       train_loss={"epoch": total_loss[0], "loss":total_loss[1]},
-                       valid_loss={"epoch": valid_loss[0], "loss":valid_loss[1]} if valid_loss is not None else None)
+                       train_loss=total_loss[-1],
+                       valid_loss=valid_loss[1] if valid_loss is not None else None)
     torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
 
   if torch.cuda.is_available():
