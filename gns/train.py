@@ -273,8 +273,8 @@ def save_model_and_train_state(rank, device, simulator, flags, step, epoch, opti
                           epoch=epoch,
                           train_loss_hist=train_loss_hist,
                           valid_loss_hist=valid_loss_hist,
-                          train_loss=train_loss_hist[-1],
-                          valid_loss=valid_loss_hist[-1] if len(valid_loss_hist) > 0 else None)
+                          train_loss=train_loss_hist[-1] if train_loss_hist else None,
+                          valid_loss=valid_loss_hist[-1] if valid_loss_hist else None)
       torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
       
 def train(rank, flags, world_size, device):
@@ -388,7 +388,7 @@ def train(rank, flags, world_size, device):
         torch.distributed.barrier()
       
       total_loss = 0
-      last_loss = 0
+      current_loss = 0
 
       for example in dl:  # ((position, particle_type, material_property, n_particles_per_example), labels) are in dl
         position = example[0][0].to(device_id)
@@ -449,8 +449,8 @@ def train(rank, flags, world_size, device):
                          loss, torch.zeros_like(loss))
         loss = loss.sum() / num_non_kinematic
 
-        last_loss = loss.item()
-        total_loss += last_loss
+        current_loss = loss.item()
+        total_loss += current_loss
 
         # Computes the gradient of loss
         optimizer.zero_grad()
@@ -462,7 +462,7 @@ def train(rank, flags, world_size, device):
         for param in optimizer.param_groups:
           param['lr'] = lr_new
      
-        print(f'rank = {rank}, step = {step}, epoch = {epoch}, last_loss = {last_loss}', flush=True)
+        print(f'rank = {rank}, step = {step}, epoch = {epoch}, loss = {current_loss}', flush=True)
 
         step += 1
 
