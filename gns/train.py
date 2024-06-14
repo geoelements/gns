@@ -246,6 +246,37 @@ def optimizer_to(optim, device):
           if subparam._grad is not None:
             subparam._grad.data = subparam._grad.data.to(device)
 
+
+
+def save_model_and_train_state(rank, device, simulator, flags, step, epoch, optimizer, train_loss_hist, valid_loss_hist):
+  """Save model state
+  
+  Args:
+    rank: local rank
+    device: torch device type
+    simulator: Trained simulator if not will undergo training.
+    flags: flags
+    step: step
+    epoch: epoch
+    optimizer: optimizer
+    train_loss_hist: train_loss_hist
+    valid_loss_hist: valid_loss_hist
+  """
+  if rank == 0 or device == torch.device("cpu"):
+      if device == torch.device("cpu"):
+          simulator.save(flags["model_path"] + 'model-' + str(step) + '.pt')
+      else:
+          simulator.module.save(flags["model_path"] + 'model-' + str(step) + '.pt')
+
+      train_state = dict(optimizer_state=optimizer.state_dict(),
+                          global_train_state={"step": step},
+                          epoch=epoch,
+                          train_loss_hist=train_loss_hist,
+                          valid_loss_hist=valid_loss_hist,
+                          train_loss=train_loss_hist[-1],
+                          valid_loss=valid_loss_hist[-1] if len(valid_loss_hist) > 0 else None)
+      torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
+      
 def train(rank, flags, world_size, device):
   """Train the model.
 
@@ -462,45 +493,13 @@ def train(rank, flags, world_size, device):
 
       # Save model state
       if epoch > 0 and epoch % flags["nsave_steps"] == 0:
-        if rank == 0 or device == torch.device("cpu"):
-          if device == torch.device("cpu"):
-            simulator.save(flags["model_path"] + 'model-'+str(step)+'.pt')
-          else:
-            simulator.module.save(flags["model_path"] + 'model-'+str(step)+'.pt')
+        save_model_and_train_state(rank, device, simulator, flags, step, epoch, optimizer, train_loss_hist, valid_loss_hist)
 
-          # TODO: Check if needs [-1] or not?
-          total_loss = train_loss_hist
-          valid_loss = valid_loss_hist[-1] if len(valid_loss_hist) > 0 else None
-          train_state = dict(optimizer_state=optimizer.state_dict(),
-                             global_train_state={"step": step},
-                             epoch=epoch,
-                             train_loss_hist=train_loss_hist,
-                             valid_loss_hist=valid_loss_hist,
-                             train_loss=total_loss[-1],
-                             valid_loss=valid_loss[1] if valid_loss is not None else None)
-          torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
 
   except KeyboardInterrupt:
     pass
 
-  print("Total loss: ", total_loss.item(), " validation loss", valid_loss.item() if valid_loss is not None else None)
-
-  if rank == 0 or device == torch.device("cpu"):
-    if device == torch.device("cpu"):
-      simulator.save(flags["model_path"] + 'model-'+str(step)+'.pt')
-    else:
-      simulator.module.save(flags["model_path"] + 'model-'+str(step)+'.pt')
-
-    total_loss = train_loss_hist
-    valid_loss = valid_loss_hist[-1] if len(valid_loss_hist) > 0 else None
-    train_state = dict(optimizer_state=optimizer.state_dict(),
-                       global_train_state={"step": step},
-                       epoch=epoch,
-                       train_loss_hist=train_loss_hist,
-                       valid_loss_hist=valid_loss_hist,
-                       train_loss=total_loss[-1],
-                       valid_loss=valid_loss[1] if valid_loss is not None else None)
-    torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
+  save_model_and_train_state(rank, device, simulator, flags, step, epoch, optimizer, train_loss_hist, valid_loss_hist)
 
   if torch.cuda.is_available():
     distribute.cleanup()
