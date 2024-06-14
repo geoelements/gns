@@ -473,7 +473,7 @@ def train(rank, flags, world_size, device):
             break
 
       # Epoch level statistics
-      
+
       # Training loss at epoch
       epoch_train_loss /= len(dl)
       epoch_train_loss = torch.tensor([epoch_train_loss]).to(device_id)
@@ -508,6 +508,7 @@ def train(rank, flags, world_size, device):
   except KeyboardInterrupt:
     pass
 
+  # Save model state on keyboard interrupt
   save_model_and_train_state(rank, device, simulator, flags, step, epoch, optimizer, train_loss, valid_loss, train_loss_hist, valid_loss_hist)
 
   if torch.cuda.is_available():
