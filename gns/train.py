@@ -202,36 +202,6 @@ def predict(device: str):
       torch.mean(torch.cat(eval_loss))))
 
 
-
-def validate(simulator: learned_simulator.LearnedSimulator,
-             ds: torch.utils.data.DataLoader,
-             n_features, flags, rank, device_id
-             ):
-  """Validate during training.
-
-  Args:
-    simulator: Trained simulator if not will undergo training.
-
-  """
-
-  simulator.eval()
-
-  # See if our dataset has material property as feature
-  if len(ds.dataset._data[0]) == 3:  # `ds` has (positions, particle_type, material_property)
-    material_property_as_feature = True
-  elif len(ds.dataset._data[0]) == 2:  # `ds` only has (positions, particle_type)
-    material_property_as_feature = False
-  else:
-    raise NotImplementedError
-
-  eval_loss = []
-  with torch.no_grad():
-    for example_i, features in enumerate(ds):
-      loss = validation(simulator, features, n_features, flags, rank, device_id)
-      eval_loss.append(torch.flatten(loss))
-
-  return torch.mean(torch.cat(eval_loss))
-
 def optimizer_to(optim, device):
   for param in optim.state.values():
     # Not sure there are any global tensors in the state dict
@@ -326,6 +296,7 @@ def train(rank, flags, world_size, device):
   # Initialize training state
   step = 0
   epoch = 0
+  steps_per_epoch = 0
 
   valid_loss = None
   epoch_train_loss = 0
@@ -414,6 +385,7 @@ def train(rank, flags, world_size, device):
         torch.distributed.barrier()
 
       for example in dl:  
+        steps_per_epoch += 1
         # ((position, particle_type, material_property, n_particles_per_example), labels) are in dl
         position = example[0][0].to(device_id)
         particle_type = example[0][1].to(device_id)
@@ -449,7 +421,7 @@ def train(rank, flags, world_size, device):
         # Validation
         if flags["validation_interval"] is not None:
           sampled_valid_example = next(iter(dl_valid))
-          if step % flags["validation_interval"] == 0:
+          if step > 0 and step % flags["validation_interval"] == 0:
               valid_loss = validation(
                 simulator, sampled_valid_example, n_features, flags, rank, device_id)
               print(f"Validation loss at {step}: {valid_loss.item()}")
@@ -483,9 +455,8 @@ def train(rank, flags, world_size, device):
             break
 
       # Epoch level statistics
-
       # Training loss at epoch
-      epoch_train_loss /= len(dl)
+      epoch_train_loss /= steps_per_epoch
       epoch_train_loss = torch.tensor([epoch_train_loss]).to(device_id)
       if device == torch.device("cuda"):
         torch.distributed.reduce(epoch_train_loss, dst=0, op=torch.distributed.ReduceOp.SUM)
@@ -495,7 +466,9 @@ def train(rank, flags, world_size, device):
 
       # Validation loss at epoch
       if flags["validation_interval"] is not None:
-        epoch_valid_loss = validate(simulator, dl_valid, n_features, flags, rank, device_id)
+        sampled_valid_example = next(iter(dl_valid))
+        epoch_valid_loss = validation(
+                simulator, sampled_valid_example, n_features, flags, rank, device_id)
         if device == torch.device("cuda"):
           torch.distributed.reduce(epoch_valid_loss, dst=0, op=torch.distributed.ReduceOp.SUM)
           epoch_valid_loss /= world_size
@@ -510,6 +483,7 @@ def train(rank, flags, world_size, device):
       
       # Reset epoch training loss
       epoch_train_loss = 0
+      steps_per_epoch = 0
       epoch += 1
 
       if step >= flags["ntraining_steps"]:
