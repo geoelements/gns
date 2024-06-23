@@ -389,7 +389,7 @@ def train(rank, flags, world_size, device):
     steps_per_epoch = 0
 
     valid_loss = None
-    epoch_train_loss = 0
+    train_loss = 0
     epoch_valid_loss = None
 
     train_loss_hist = []
