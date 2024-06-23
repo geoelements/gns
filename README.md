@@ -146,6 +146,7 @@ Number of GPUs to use for training.
 **tensorboard_log_dir (String)**
 
 Path to log info on training and validation and visualize via tensorboard.
+
 </details>
 
 

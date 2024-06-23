@@ -476,6 +476,9 @@ def train(rank, flags, world_size, device):
     if rank == 0 or device == torch.device("cpu"):
         writer = SummaryWriter(log_dir=flags["tensorboard_log_dir"])
 
+        writer.add_text("Data path", flags["data_path"])
+        writer.add_text("metadata", json.dumps(metadata, indent=4))
+        
         # Log hyperparameters
         hparam_dict = {
             "lr_init": flags["lr_init"],
