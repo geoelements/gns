@@ -27,7 +27,7 @@ TYPE_TO_COLOR = {
 }
 
 
-class Render():
+class Render:
     """
     Render rollout data into gif or vtk files
     """
@@ -42,7 +42,9 @@ class Render():
         """
         # Texts to describe rollout cases for data and render
         rollout_cases = [
-            ["ground_truth_rollout", "Reality"], ["predicted_rollout", "GNS"]]
+            ["ground_truth_rollout", "Reality"],
+            ["predicted_rollout", "GNS"],
+        ]
         self.rollout_cases = rollout_cases
         self.input_dir = input_dir
         self.input_name = input_name
@@ -56,10 +58,11 @@ class Render():
         trajectory = {}
         for rollout_case in rollout_cases:
             trajectory[rollout_case[0]] = np.concatenate(
-                [rollout_data["initial_positions"], rollout_data[rollout_case[0]]], axis=0
+                [rollout_data["initial_positions"], rollout_data[rollout_case[0]]],
+                axis=0,
             )
         self.trajectory = trajectory
-        self.loss = self.rollout_data['loss'].item()
+        self.loss = self.rollout_data["loss"].item()
 
         # Trajectory information
         self.dims = trajectory[rollout_cases[0][0]].shape[2]
@@ -94,7 +97,12 @@ class Render():
         return color_mask
 
     def render_gif_animation(
-            self, point_size=1, timestep_stride=3, vertical_camera_angle=20, viewpoint_rotation=0.5, change_yz=False
+        self,
+        point_size=1,
+        timestep_stride=3,
+        vertical_camera_angle=20,
+        viewpoint_rotation=0.5,
+        change_yz=False,
     ):
         """
         Render `.gif` animation from `.pkl` trajectory data.
@@ -111,12 +119,12 @@ class Render():
         # Init figures
         fig = plt.figure()
         if self.dims == 2:
-            ax1 = fig.add_subplot(1, 2, 1, projection='rectilinear')
-            ax2 = fig.add_subplot(1, 2, 2, projection='rectilinear')
+            ax1 = fig.add_subplot(1, 2, 1, projection="rectilinear")
+            ax2 = fig.add_subplot(1, 2, 2, projection="rectilinear")
             axes = [ax1, ax2]
         elif self.dims == 3:
-            ax1 = fig.add_subplot(1, 2, 1, projection='3d')
-            ax2 = fig.add_subplot(1, 2, 2, projection='3d')
+            ax1 = fig.add_subplot(1, 2, 1, projection="3d")
+            ax2 = fig.add_subplot(1, 2, 2, projection="3d")
             axes = [ax1, ax2]
 
         # Define datacase name
@@ -134,6 +142,7 @@ class Render():
 
         # Fig creating function for 2d
         if self.dims == 2:
+
             def animate(i):
                 print(f"Render step {i}/{self.num_steps}")
 
@@ -145,61 +154,95 @@ class Render():
                     axes[j].set_xlim([float(xboundary[0]), float(xboundary[1])])
                     axes[j].set_ylim([float(yboundary[0]), float(yboundary[1])])
                     for mask, color in color_mask:
-                        axes[j].scatter(self.trajectory[datacase][i][mask, 0],
-                                        self.trajectory[datacase][i][mask, 1], s=point_size, color=color)
-                    axes[j].grid(True, which='both')
+                        axes[j].scatter(
+                            self.trajectory[datacase][i][mask, 0],
+                            self.trajectory[datacase][i][mask, 1],
+                            s=point_size,
+                            color=color,
+                        )
+                    axes[j].grid(True, which="both")
                     axes[j].set_title(render_datacases[j])
                 fig.suptitle(f"{i}/{self.num_steps}, Total MSE: {self.loss:.2e}")
 
         # Fig creating function for 3d
         elif self.dims == 3:
+
             def animate(i):
                 print(f"Render step {i}/{self.num_steps} for {self.output_name}")
 
                 fig.clear()
                 for j, datacase in enumerate(trajectory_datacases):
                     # select ax to plot at set boundary
-                    axes[j] = fig.add_subplot(1, 2, j + 1, projection='3d', autoscale_on=False)
+                    axes[j] = fig.add_subplot(
+                        1, 2, j + 1, projection="3d", autoscale_on=False
+                    )
                     if change_yz == False:
                         axes[j].set_xlim([float(xboundary[0]), float(xboundary[1])])
                         axes[j].set_ylim([float(yboundary[0]), float(yboundary[1])])
                         axes[j].set_zlim([float(zboundary[0]), float(zboundary[1])])
                         for mask, color in color_mask:
-                            axes[j].scatter(self.trajectory[datacase][i][mask, 0],
-                                            self.trajectory[datacase][i][mask, 1],
-                                            self.trajectory[datacase][i][mask, 2], s=point_size, color=color)
+                            axes[j].scatter(
+                                self.trajectory[datacase][i][mask, 0],
+                                self.trajectory[datacase][i][mask, 1],
+                                self.trajectory[datacase][i][mask, 2],
+                                s=point_size,
+                                color=color,
+                            )
                         # rotate viewpoints angle little by little for each timestep
                         axes[j].set_box_aspect(
-                            aspect=(float(xboundary[1]) - float(xboundary[0]),
-                                    float(yboundary[1]) - float(yboundary[0]),
-                                    float(zboundary[1]) - float(zboundary[0])))
-                        axes[j].view_init(elev=vertical_camera_angle, azim=i * viewpoint_rotation)
-                        axes[j].grid(True, which='both')
+                            aspect=(
+                                float(xboundary[1]) - float(xboundary[0]),
+                                float(yboundary[1]) - float(yboundary[0]),
+                                float(zboundary[1]) - float(zboundary[0]),
+                            )
+                        )
+                        axes[j].view_init(
+                            elev=vertical_camera_angle, azim=i * viewpoint_rotation
+                        )
+                        axes[j].grid(True, which="both")
                         axes[j].set_title(render_datacases[j])
                     else:
                         axes[j].set_xlim([float(xboundary[0]), float(xboundary[1])])
                         axes[j].set_ylim([float(zboundary[0]), float(zboundary[1])])
                         axes[j].set_zlim([float(yboundary[0]), float(yboundary[1])])
                         for mask, color in color_mask:
-                            axes[j].scatter(self.trajectory[datacase][i][mask, 0],
-                                            self.trajectory[datacase][i][mask, 2],
-                                            self.trajectory[datacase][i][mask, 1], s=point_size, color=color)
+                            axes[j].scatter(
+                                self.trajectory[datacase][i][mask, 0],
+                                self.trajectory[datacase][i][mask, 2],
+                                self.trajectory[datacase][i][mask, 1],
+                                s=point_size,
+                                color=color,
+                            )
                         # set aspect ratio to equal
                         axes[j].set_box_aspect(
-                            aspect=(float(xboundary[1]) - float(xboundary[0]),
-                                    float(zboundary[1]) - float(zboundary[0]),
-                                    float(yboundary[1]) - float(yboundary[0])))
+                            aspect=(
+                                float(xboundary[1]) - float(xboundary[0]),
+                                float(zboundary[1]) - float(zboundary[0]),
+                                float(yboundary[1]) - float(yboundary[0]),
+                            )
+                        )
                         # rotate viewpoints angle little by little for each timestep
-                        axes[j].view_init(elev=vertical_camera_angle, azim=i * viewpoint_rotation)
-                        axes[j].grid(True, which='both')
+                        axes[j].view_init(
+                            elev=vertical_camera_angle, azim=i * viewpoint_rotation
+                        )
+                        axes[j].grid(True, which="both")
                         axes[j].set_title(render_datacases[j])
                 fig.suptitle(f"{i}/{self.num_steps}, Total MSE: {self.loss:.2e}")
 
         # Creat animation
         ani = animation.FuncAnimation(
-            fig, animate, frames=np.arange(0, self.num_steps, timestep_stride), interval=10)
+            fig,
+            animate,
+            frames=np.arange(0, self.num_steps, timestep_stride),
+            interval=10,
+        )
 
-        ani.save(f'{self.output_dir}{self.output_name}.gif', dpi=100, fps=30, writer='imagemagick')
+        ani.save(
+            f"{self.output_dir}{self.output_name}.gif",
+            dpi=100,
+            fps=30,
+            writer="imagemagick",
+        )
         print(f"Animation saved to: {self.output_dir}{self.output_name}.gif")
 
     def write_vtk(self):
@@ -213,11 +256,15 @@ class Render():
             initial_position = self.trajectory[rollout_case][0]
             for i, coord in enumerate(self.trajectory[rollout_case]):
                 disp = np.linalg.norm(coord - initial_position, axis=1)
-                pointsToVTK(f"{path}/points{i}",
-                            np.array(coord[:, 0]),
-                            np.array(coord[:, 1]),
-                            np.zeros_like(coord[:, 1]) if self.dims == 2 else np.array(coord[:, 2]),
-                            data={"displacement": disp})
+                pointsToVTK(
+                    f"{path}/points{i}",
+                    np.array(coord[:, 0]),
+                    np.array(coord[:, 1]),
+                    np.zeros_like(coord[:, 1])
+                    if self.dims == 2
+                    else np.array(coord[:, 2]),
+                    data={"displacement": disp},
+                )
         print(f"vtk saved to: {self.output_dir}{self.output_name}...")
 
 
@@ -235,12 +282,11 @@ def main(_):
             timestep_stride=FLAGS.step_stride,
             vertical_camera_angle=20,
             viewpoint_rotation=0.3,
-            change_yz=FLAGS.change_yz
+            change_yz=FLAGS.change_yz,
         )
     elif FLAGS.output_mode == "vtk":
         render.write_vtk()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(main)
-

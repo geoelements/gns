@@ -1,8 +1,9 @@
 absl-py
 autopep8
-numpy==1.23.1
+black
 dm-tree
 matplotlib
+numpy==1.23.1
 pyevtk
 pytest
 torch
