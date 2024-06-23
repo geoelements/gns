@@ -5,6 +5,7 @@ matplotlib
 numpy==1.23.1
 pyevtk
 pytest
+tensorboard
 torch
 torch_geometric
 torch_sparse
