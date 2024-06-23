@@ -8,6 +8,7 @@ import sys
 
 import numpy as np
 import torch
+from torch.utils.tensorboard import SummaryWriter
 from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
 
@@ -75,6 +76,10 @@ flags.DEFINE_integer(
     help="CUDA device (zero indexed), default is None so default CUDA device will be used.",
 )
 flags.DEFINE_integer("n_gpus", 1, help="The number of GPUs to utilize for training.")
+
+flags.DEFINE_string(
+    "tensorboard_log_dir", "logs/", help="Directory for TensorBoard logs"
+)
 
 FLAGS = flags.FLAGS
 
@@ -468,8 +473,23 @@ def train(rank, flags, world_size, device):
 
     print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
 
+    if rank == 0 or device == torch.device("cpu"):
+        writer = SummaryWriter(log_dir=flags["tensorboard_log_dir"])
+
+        # Log hyperparameters
+        hparam_dict = {
+            "lr_init": flags["lr_init"],
+            "lr_decay": flags["lr_decay"],
+            "lr_decay_steps": flags["lr_decay_steps"],
+            "batch_size": flags["batch_size"],
+            "noise_std": flags["noise_std"],
+            "ntraining_steps": flags["ntraining_steps"],
+        }
+        metric_dict = {"train_loss": 0, "valid_loss": 0}  # Initial values
+        writer.add_hparams(hparam_dict, metric_dict)
+
     try:
-        num_epochs = flags["ntraining_steps"] // len(dl) + 1  # Calculate total epochs
+        num_epochs = flags["ntraining_steps"] // len(dl)  # Calculate total epochs
         for epoch in tqdm(range(epoch, num_epochs), desc="Training", unit="epoch"):
             if device == torch.device("cuda"):
                 torch.distributed.barrier()
@@ -532,16 +552,17 @@ def train(rank, flags, world_size, device):
                         and step > 0
                         and step % flags["validation_interval"] == 0
                     ):
-                        sampled_valid_example = next(iter(dl_valid))
-                        valid_loss = validation(
-                            simulator,
-                            sampled_valid_example,
-                            n_features,
-                            flags,
-                            rank,
-                            device_id,
-                        )
-                        print(f"Validation loss at {step}: {valid_loss.item()}")
+                        if rank == 0 or device == torch.device("cpu"):
+                            sampled_valid_example = next(iter(dl_valid))
+                            valid_loss = validation(
+                                simulator,
+                                sampled_valid_example,
+                                n_features,
+                                flags,
+                                rank,
+                                device_id,
+                            )
+                            writer.add_scalar("Loss/valid", valid_loss.item(), step)
 
                     loss = acceleration_loss(pred_acc, target_acc, non_kinematic_mask)
 
@@ -560,6 +581,11 @@ def train(rank, flags, world_size, device):
                     )
                     for param in optimizer.param_groups:
                         param["lr"] = lr_new
+
+                    # Log training loss
+                    if rank == 0 or device == torch.device("cpu"):
+                        writer.add_scalar("Loss/train", train_loss, step)
+                        writer.add_scalar("Learning Rate", lr_new, step)
 
                     avg_loss = epoch_loss / steps_this_epoch
                     pbar.set_postfix(
@@ -613,9 +639,11 @@ def train(rank, flags, world_size, device):
                 valid_loss_hist.append((epoch, epoch_valid_loss.item()))
 
             if rank == 0 or device == torch.device("cpu"):
-                print(f"Epoch {epoch}, training loss: {avg_loss.item()}")
+                writer.add_scalar("Loss/train_epoch", avg_loss.item(), epoch)
                 if flags["validation_interval"] is not None:
-                    print(f"Epoch {epoch}, validation loss: {epoch_valid_loss.item()}")
+                    writer.add_scalar(
+                        "Loss/valid_epoch", epoch_valid_loss.item(), epoch
+                    )
 
             if step >= flags["ntraining_steps"]:
                 break
@@ -636,6 +664,9 @@ def train(rank, flags, world_size, device):
         train_loss_hist,
         valid_loss_hist,
     )
+
+    if rank == 0 or device == torch.device("cpu"):
+        writer.close()
 
     if torch.cuda.is_available():
         distribute.cleanup()
@@ -763,6 +794,10 @@ def main(_):
         # If model_path does not exist create new directory.
         if not os.path.exists(FLAGS.model_path):
             os.makedirs(FLAGS.model_path)
+
+        # Create TensorBoard log directory
+        if not os.path.exists(FLAGS.tensorboard_log_dir):
+            os.makedirs(FLAGS.tensorboard_log_dir)
 
         # Train on gpu
         if device == torch.device("cuda"):
