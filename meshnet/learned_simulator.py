@@ -7,17 +7,18 @@ from meshnet import normalization
 
 class MeshSimulator(nn.Module):
     def __init__(
-            self,
-            simulation_dimensions: int,
-            nnode_in: int,
-            nedge_in: int,
-            latent_dim: int,
-            nmessage_passing_steps: int,
-            nmlp_layers: int,
-            mlp_hidden_dim: int,
-            nnode_types: int,
-            node_type_embedding_size: int,
-            device="cpu"):
+        self,
+        simulation_dimensions: int,
+        nnode_in: int,
+        nedge_in: int,
+        latent_dim: int,
+        nmessage_passing_steps: int,
+        nmlp_layers: int,
+        mlp_hidden_dim: int,
+        nnode_types: int,
+        node_type_embedding_size: int,
+        device="cpu",
+    ):
         """Initializes the model.
 
         Args:
@@ -45,23 +46,27 @@ class MeshSimulator(nn.Module):
             latent_dim=latent_dim,
             nmessage_passing_steps=nmessage_passing_steps,
             nmlp_layers=nmlp_layers,
-            mlp_hidden_dim=mlp_hidden_dim)
+            mlp_hidden_dim=mlp_hidden_dim,
+        )
 
         self._output_normalizer = normalization.Normalizer(
-            size=simulation_dimensions, name='output_normalizer', device=device)
+            size=simulation_dimensions, name="output_normalizer", device=device
+        )
         self._node_normalizer = normalization.Normalizer(
-            size=nnode_in, name='node_normalizer', device=device)
+            size=nnode_in, name="node_normalizer", device=device
+        )
         self._device = device
 
     def forward(self):
         """Forward hook runs on class instantiation"""
         pass
 
-
-    def _encoder_preprocessor(self,
-                              current_velocities: torch.tensor,
-                              node_type: torch.tensor,
-                              velocity_noise: torch.tensor):
+    def _encoder_preprocessor(
+        self,
+        current_velocities: torch.tensor,
+        node_type: torch.tensor,
+        velocity_noise: torch.tensor,
+    ):
         """
         Take `current_velocity` (nnodes, dims) and node type (nnodes, 1),
         impose `velocity_noise`, convert integer `node_type` to onehot embedding `node_type`,
@@ -89,7 +94,9 @@ class MeshSimulator(nn.Module):
 
         # embed integer node_type to onehot vector
         node_type = torch.squeeze(node_type.long())
-        node_type_onehot = torch.nn.functional.one_hot(node_type, self._node_type_embedding_size)
+        node_type_onehot = torch.nn.functional.one_hot(
+            node_type, self._node_type_embedding_size
+        )
         node_features.append(node_type_onehot)
 
         node_features = torch.cat(node_features, dim=1)
@@ -98,13 +105,14 @@ class MeshSimulator(nn.Module):
         return processed_node_features
 
     def predict_acceleration(
-            self,
-            current_velocities,
-            node_type,
-            edge_index,
-            edge_features,
-            target_velocities,
-            velocity_noise):
+        self,
+        current_velocities,
+        node_type,
+        edge_index,
+        edge_features,
+        target_velocities,
+        velocity_noise,
+    ):
         """
         Predict acceleration using current features
 
@@ -122,26 +130,26 @@ class MeshSimulator(nn.Module):
 
         # prepare node features, edge features, get connectivity
         processed_node_features = self._encoder_preprocessor(
-            current_velocities,
-            node_type,
-            velocity_noise)
+            current_velocities, node_type, velocity_noise
+        )
 
         # predict acceleration
         predicted_normalized_accelerations = self._encode_process_decode(
-            processed_node_features, edge_index, edge_features)
+            processed_node_features, edge_index, edge_features
+        )
 
         # target acceleration
         noised_velocities = current_velocities + velocity_noise
         target_accelerations = target_velocities - noised_velocities
-        target_normalized_accelerations = self._output_normalizer(target_accelerations, self.training)
+        target_normalized_accelerations = self._output_normalizer(
+            target_accelerations, self.training
+        )
 
         return predicted_normalized_accelerations, target_normalized_accelerations
 
-    def predict_velocity(self,
-                         current_velocities,
-                         node_type,
-                         edge_index,
-                         edge_features):
+    def predict_velocity(
+        self, current_velocities, node_type, edge_index, edge_features
+    ):
         """
         Predict velocity using current features when rollout
 
@@ -154,29 +162,32 @@ class MeshSimulator(nn.Module):
 
         # prepare node features, edge features, get connectivity
         processed_node_features = self._encoder_preprocessor(
-            current_velocities,
-            node_type,
-            velocity_noise=None)
+            current_velocities, node_type, velocity_noise=None
+        )
 
         # predict dynamics
         predicted_normalized_accelerations = self._encode_process_decode(
-            processed_node_features, edge_index, edge_features)
+            processed_node_features, edge_index, edge_features
+        )
 
         # denormalize the predicted_normalized_accelerations for actual physical domain
-        predicted_accelerations = self._output_normalizer.inverse(predicted_normalized_accelerations)
+        predicted_accelerations = self._output_normalizer.inverse(
+            predicted_normalized_accelerations
+        )
         predicted_velocity = current_velocities + predicted_accelerations
 
         return predicted_velocity
 
     def save(self, path=None):
-
         model = self.state_dict()
         _output_normalizer = self._output_normalizer.get_variable()
         _node_normalizer = self._node_normalizer.get_variable()
 
-        save_data = {'model': model,
-                     '_output_normalizer': _output_normalizer,
-                     '_node_normalizer': _node_normalizer}
+        save_data = {
+            "model": model,
+            "_output_normalizer": _output_normalizer,
+            "_node_normalizer": _node_normalizer,
+        }
 
         torch.save(save_data, path)
 
@@ -191,13 +202,12 @@ class MeshSimulator(nn.Module):
         self.load_state_dict(dicts["model"])
 
         keys = list(dicts.keys())
-        keys.remove('model')
+        keys.remove("model")
 
         for k in keys:
             v = dicts[k]
             for para, value in v.items():
-                object = eval('self.'+k)
+                object = eval("self." + k)
                 setattr(object, para, value)
 
-        print("Simulator model loaded checkpoint %s"%path)
-
+        print("Simulator model loaded checkpoint %s" % path)

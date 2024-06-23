@@ -4,10 +4,11 @@ import os
 import sys
 
 # Add parent directory to Python path
-parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(parent_dir)
 
 from gns.graph_network import EncodeProcessDecode
+
 
 @pytest.fixture
 def model_data():
@@ -34,6 +35,7 @@ def model_data():
     edge_features = torch.rand(batch_size, nparticles, nedge_in_features)
 
     return model, x, edge_index, edge_features, nparticles, nnode_out_features
+
 
 def test_encode_process_decode(model_data):
     model, x, edge_index, edge_features, nparticles, nnode_out_features = model_data

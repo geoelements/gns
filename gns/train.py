@@ -478,7 +478,7 @@ def train(rank, flags, world_size, device):
 
         writer.add_text("Data path", flags["data_path"])
         writer.add_text("metadata", json.dumps(metadata, indent=4))
-        
+
         # Log hyperparameters
         hparam_dict = {
             "lr_init": flags["lr_init"],
