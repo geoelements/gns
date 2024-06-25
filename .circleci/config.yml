@@ -23,6 +23,7 @@ jobs:
             conda install -c conda-forge matplotlib-base -y
             conda install -c conda-forge pyevtk -y
             conda install -c conda-forge pytest -y
+            conda install -c conda-forge tensorboard -y
             pytest test/
             echo "Test paths: ${DATA_PATH} ${MODEL_PATH}"
             ls
@@ -30,6 +31,12 @@ jobs:
             echo "Predict rollout"
             ls ./gns-sample/WaterDropSample/models/
             
+      - run: 
+          name: Black check 
+          command: |
+            conda install -c conda-forge black -y
+            black --check .
+
 workflows:
     version: 2
     build:
