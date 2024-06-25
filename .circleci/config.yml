@@ -17,14 +17,7 @@ jobs:
             DATA_PATH="${TMP_DIR}/${DATASET_NAME}/dataset/"
             MODEL_PATH="${TMP_DIR}/${DATASET_NAME}/models/"
             ROLLOUT_PATH="${TMP_DIR}/${DATASET_NAME}/rollout/"
-            conda install -c anaconda absl-py -y
-            conda install -c conda-forge numpy -y
-            conda install -c conda-forge dm-tree -y
-            conda install -c conda-forge matplotlib-base -y
-            conda install -c conda-forge pyevtk -y
-            conda install -c conda-forge pytest -y
-            conda install -c conda-forge tensorboard -y
-            conda install conda-forge::hydra-core -y
+            pip3 install -r requirements.txt
             pytest test/
             echo "Test paths: ${DATA_PATH} ${MODEL_PATH}"
             ls
