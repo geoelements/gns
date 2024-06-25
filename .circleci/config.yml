@@ -2,7 +2,7 @@ version: 2.0
 jobs:
   gns:
     docker:
-      - image: docker pull ghcr.io/geoelements/gns:config
+      - image: ghcr.io/geoelements/gns:config
     steps:
       - checkout
       - run:

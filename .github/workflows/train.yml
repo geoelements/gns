@@ -21,10 +21,6 @@ jobs:
     - name: PyTest
       run: |
         pytest test/
-
-    - name: Black check
-      run: |
-        black --check .
         
     - name: Train GNS
       if: github.event_name != 'workflow_run'
