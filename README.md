@@ -84,6 +84,9 @@ data:
   path: ../gns-sample/WaterDropSample/dataset/
   batch_size: 2
   noise_std: 6.7e-4
+  input_sequence_length: 6
+  num_particle_types: 9
+  kinematic_particle_id: 3
 
 # Model configuration
 model:
@@ -115,11 +118,6 @@ hardware:
 # Logging configuration
 logging:
   tensorboard_dir: logs/
-
-constants:
-  input_sequence_length: 6
-  num_particle_types: 9
-  kinematic_particle_id: 3
 ```
 
 </details>

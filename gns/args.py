@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 from omegaconf import MISSING
+from hydra.core.config_store import ConfigStore
 
 
 @dataclass
@@ -8,6 +9,9 @@ class DataConfig:
     path: str = MISSING
     batch_size: int = 2
     noise_std: float = 6.7e-4
+    input_sequence_length: int = 6
+    num_particle_types: int = 9
+    kinematic_particle_id: int = 3
 
 
 @dataclass
@@ -51,13 +55,6 @@ class LoggingConfig:
 
 
 @dataclass
-class ConstantsConfig:
-    input_sequence_length: int = 6
-    num_particle_types: int = 9
-    kinematic_particle_id: int = 3
-
-
-@dataclass
 class Config:
     mode: str = "train"
     data: DataConfig = field(default_factory=DataConfig)
@@ -66,11 +63,8 @@ class Config:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     hardware: HardwareConfig = field(default_factory=HardwareConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
-    constants: ConstantsConfig = field(default_factory=ConstantsConfig)
 
 
 # Hydra configuration
-from hydra.core.config_store import ConfigStore
-
 cs = ConfigStore.instance()
 cs.store(name="base_config", node=Config)
