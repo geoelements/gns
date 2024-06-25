@@ -30,7 +30,7 @@ output:
 
 # Training configuration
 training:
-  steps: 2000
+  steps: 100
   validation_interval: null
   save_steps: 500
   resume: False
