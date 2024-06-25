@@ -5,7 +5,6 @@ jobs:
       - image: docker pull ghcr.io/geoelements/gns:config
     steps:
       - checkout
-      # GCC
       - run:
           name: Train & Test
           command: |

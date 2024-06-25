@@ -1,6 +1,10 @@
 name: GNS Train and Test
 
 on:
+  workflow_run:
+    workflows: ["Build and Push to GHCR"]
+    types:
+      - completed
   push:
   pull_request:
 
@@ -13,6 +17,14 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+
+    - name: Wait for GHCR build
+      if: github.event_name == 'workflow_run'
+      run: echo "Build and Push to GHCR workflow completed, proceeding with GNS Train and Test"
+
+    - name: Run without waiting
+      if: github.event_name != 'workflow_run'
+      run: echo "Build and Push to GHCR not triggered, proceeding with GNS Train and Test"
 
     - name: Train & Test
       run: |
