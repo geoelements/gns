@@ -13,15 +13,15 @@ mode: train
 
 # Data configuration
 data:
-  path: ./gns-sample/WaterDropSample/dataset/
+  path: ../gns-sample/WaterDropSample/dataset/
   batch_size: 2
   noise_std: 6.7e-4
 
 # Model configuration
 model:
   path: models/
-  file: null
-  train_state_file: train_state.pt
+  file: None
+  train_state_file: None
 
 # Output configuration
 output:
@@ -33,6 +33,7 @@ training:
   steps: 10
   validation_interval: null
   save_steps: 500
+  resume: False
   learning_rate:
     initial: 1e-4
     decay: 0.1

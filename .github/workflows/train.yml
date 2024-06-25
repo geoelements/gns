@@ -51,12 +51,8 @@ jobs:
         ROLLOUT_PATH="${TMP_DIR}/${DATASET_NAME}/rollout/"
         pytest test/
         echo "Test paths: ${DATA_PATH} ${MODEL_PATH}"
-        ls
         python -m gns.train
-        echo "Predict rollout"
-        ls ./gns-sample/WaterDropSample/models/
-
+        
     - name: Black check
       run: |
-        conda install -c conda-forge black -y
         black --check .

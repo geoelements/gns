@@ -14,7 +14,7 @@ class DataConfig:
 class ModelConfig:
     path: str = "models/"
     file: Optional[str] = None
-    train_state_file: str = "train_state.pt"
+    train_state_file: Optional[str] = None
 
 
 @dataclass
@@ -35,6 +35,7 @@ class TrainingConfig:
     steps: int = 2000
     validation_interval: Optional[int] = None
     save_steps: int = 500
+    resume: Optional[bool] = False
     learning_rate: LearningRateConfig = field(default_factory=LearningRateConfig)
 
 

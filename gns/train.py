@@ -333,7 +333,7 @@ def train(rank, cfg, world_size, device):
     valid_loss_hist = []
 
     # If model_path does exist and model_file and train_state_file exist continue training.
-    if cfg.model.file is not None:
+    if cfg.model.file is not None and cfg.training.resume:
         if cfg.model.file == "latest" and cfg.model.train_state_file == "latest":
             # find the latest model, assumes model and train_state files are in step.
             fnames = glob.glob(f"{cfg.model.path}*model*pt")
@@ -375,7 +375,7 @@ def train(rank, cfg, world_size, device):
             valid_loss_hist = train_state["loss_history"]["valid"]
 
         else:
-            msg = f"Specified model_file {cfg.modelpath + cfg.model.file} and train_state_file {cfg.model.path + cfg.model.train_state_file} not found."
+            msg = f"Specified model_file {cfg.model.path + cfg.model.file} and train_state_file {cfg.model.path + cfg.model.train_state_file} not found."
             raise FileNotFoundError(msg)
 
     simulator.train()
@@ -429,7 +429,8 @@ def train(rank, cfg, world_size, device):
         writer.add_hparams(hparam_dict, metric_dict)
 
     try:
-        num_epochs = cfg.training.steps // len(dl)  # Calculate total epochs
+        num_epochs = max(1, cfg.training.steps // len(dl))  # Calculate total epochs
+        print(f"Total epochs = {num_epochs}")
         for epoch in tqdm(range(epoch, num_epochs), desc="Training", unit="epoch"):
             if device == torch.device("cuda"):
                 torch.distributed.barrier()
@@ -556,7 +557,7 @@ def train(rank, cfg, world_size, device):
                         )
 
                     step += 1
-                    if step >= cfg.training.save_steps:
+                    if step >= cfg.training.steps:
                         break
 
             # Epoch level statistics
@@ -588,7 +589,7 @@ def train(rank, cfg, world_size, device):
                         "Loss/valid_epoch", epoch_valid_loss.item(), epoch
                     )
 
-            if step >= cfg.training.save_steps:
+            if step >= cfg.training.steps:
                 break
     except KeyboardInterrupt:
         pass
