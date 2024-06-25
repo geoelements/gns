@@ -26,7 +26,6 @@ jobs:
       - run: 
           name: Black check 
           command: |
-            conda install -c conda-forge black -y
             black --check .
 
 workflows:
