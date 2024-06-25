@@ -1,0 +1,48 @@
+name: Build and Push to GHCR
+
+on:
+  push:
+    branches: [ "config" ]
+  pull_request:
+    branches: [ "config" ]
+
+env:
+  # This sets the registry to GitHub Container Registry
+  REGISTRY: ghcr.io
+  # This uses the GitHub repository name as the image name
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Log in to the Container registry
+      uses: docker/login-action@v2
+      with:
+        # This specifies GHCR as the registry
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        # This sets up the full image name for GHCR
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        # This flag ensures the image is pushed to the registry
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
