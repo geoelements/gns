@@ -25,6 +25,9 @@ import torchvision.models as models
 from torch.utils import collect_env
 from torch.utils.data.distributed import DistributedSampler
 
+import datetime
+import time
+
 flags.DEFINE_enum(
     'mode', 'train', ['train', 'valid', 'rollout'],
     help='Train model, validation or rollout evaluation.')
@@ -48,7 +51,7 @@ flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps
 flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
 
 #new argument for multinode training
-flags.DEFINE_integer("local-rank", 0, help='local rank for distributed training')s
+flags.DEFINE_integer("local-rank", 0, help='local rank for distributed training')
 
 FLAGS = flags.FLAGS
 
@@ -449,9 +452,10 @@ def train(rank, flags, world_size, verbose):
   n_features = len(dl.dataset._data[0])
 
   not_reached_nsteps = True
+  start = time.time()
   try:
     while not_reached_nsteps:
-      torch.distributed.barrier()
+      torch.distributed.barrier() 
       for example in dl:  # ((position, particle_type, material_property, n_particles_per_example), labels) are in dl
         position = example[0][0].to(device_id)
         particle_type = example[0][1].to(device_id)
@@ -503,7 +507,13 @@ def train(rank, flags, world_size, verbose):
 
         # for multi node training we need to use global rank (verbose is true is global rank is 0) instead of local rank to decide whether to print
         if verbose:
-          print(f'Training step: {step}/{flags["ntraining_steps"]}. Loss: {loss}.',flush=True)
+          #print(f'Training step: {step}/{flags["ntraining_steps"]}. Loss: {loss}.',flush=True)
+          if step % 1000 == 0:
+            print( '\nTraining time: {}'.format(
+                  datetime.timedelta(seconds=time.time() - start),
+              ),
+              )
+            start = time.time()
           # Save model state
           if step % flags["nsave_steps"] == 0:
             simulator.module.save(flags["model_path"] + 'model-'+str(step)+'.pt')
