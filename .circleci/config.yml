@@ -21,7 +21,7 @@ jobs:
             ls
             python -m gns.train
             echo "Predict rollout"
-            ls ./gns-sample/WaterDropSample/models/
+            ls ../gns-sample/WaterDropSample/models/
             
       - run: 
           name: Black check 
