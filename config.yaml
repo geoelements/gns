@@ -19,18 +19,18 @@ data:
 
 # Model configuration
 model:
-  path: models/
-  file: None
-  train_state_file: None
+  path: ../gns-sample/WaterDropSample/models/
+  file: model-1500.pt
+  train_state_file: train_state-1500.pt
 
 # Output configuration
 output:
-  path: rollouts/
+  path: ../gns-sample/WaterDropSample/rollouts/
   filename: rollout
 
 # Training configuration
 training:
-  steps: 10
+  steps: 2000
   validation_interval: null
   save_steps: 500
   resume: False

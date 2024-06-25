@@ -429,7 +429,9 @@ def train(rank, cfg, world_size, device):
         writer.add_hparams(hparam_dict, metric_dict)
 
     try:
-        num_epochs = max(1, cfg.training.steps // len(dl))  # Calculate total epochs
+        num_epochs = max(
+            1, (cfg.training.steps + len(dl) - 1) // len(dl)
+        )  # Calculate total epochs
         print(f"Total epochs = {num_epochs}")
         for epoch in tqdm(range(epoch, num_epochs), desc="Training", unit="epoch"):
             if device == torch.device("cuda"):
