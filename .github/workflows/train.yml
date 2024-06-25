@@ -2,7 +2,6 @@ name: GNS Train and Test
 
 on:
   push:
-  pull_request:
 
 jobs:
   gns:
