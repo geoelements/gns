@@ -2,13 +2,17 @@ name: Build and Push to GHCR
 
 on:
   push:
+    branches:
+      - v2
     paths:
-      - 'requirements.txt'
-      - 'Dockerfile'
+      - requirements.txt
+      - Dockerfile
   pull_request:
+    branches:
+      - v2
     paths:
-      - 'requirements.txt'
-      - 'Dockerfile'
+      - requirements.txt
+      - Dockerfile
 
 env:
   REGISTRY: ghcr.io

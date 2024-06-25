@@ -25,9 +25,9 @@ jobs:
     - name: Train GNS
       if: github.event_name != 'workflow_run'
       run: |
-        TMP_DIR="./gns-sample"
+        TMP_DIR="../gns-sample"
         DATASET_NAME="WaterDropSample"
-        git clone https://github.com/geoelements/gns-sample
+        git clone https://github.com/geoelements/gns-sample ../gns-sample
         mkdir -p ${TMP_DIR}/${DATASET_NAME}/models/
         mkdir -p ${TMP_DIR}/${DATASET_NAME}/rollout/
         DATA_PATH="${TMP_DIR}/${DATASET_NAME}/dataset/"
