@@ -13,7 +13,7 @@ mode: train
 
 # Data configuration
 data:
-  path: ../gns-sample/WaterDropSample/dataset/
+  path: ./gns-sample/WaterDropSample/dataset/
   batch_size: 2
   noise_std: 6.7e-4
 
@@ -30,7 +30,7 @@ output:
 
 # Training configuration
 training:
-  steps: 2000
+  steps: 10
   validation_interval: null
   save_steps: 500
   learning_rate:
