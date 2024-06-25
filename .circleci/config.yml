@@ -2,7 +2,7 @@ version: 2.0
 jobs:
   gns:
     docker:
-      - image: quay.io/geoelements/gns
+      - image: docker pull ghcr.io/geoelements/gns:config
     steps:
       - checkout
       # GCC
@@ -17,7 +17,6 @@ jobs:
             DATA_PATH="${TMP_DIR}/${DATASET_NAME}/dataset/"
             MODEL_PATH="${TMP_DIR}/${DATASET_NAME}/models/"
             ROLLOUT_PATH="${TMP_DIR}/${DATASET_NAME}/rollout/"
-            pip3 install -r requirements.txt  
             pytest test/
             echo "Test paths: ${DATA_PATH} ${MODEL_PATH}"
             ls
