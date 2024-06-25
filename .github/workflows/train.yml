@@ -20,14 +20,27 @@ jobs:
 
     - name: Wait for GHCR build
       if: github.event_name == 'workflow_run'
-      run: echo "Build and Push to GHCR workflow completed, proceeding with GNS Train and Test"
+      run: |
+        echo "Build and Push to GHCR workflow completed, proceeding with GNS Train and Test"
+        TMP_DIR="./gns-sample"
+        DATASET_NAME="WaterDropSample"
+        git clone https://github.com/geoelements/gns-sample
+        mkdir -p ${TMP_DIR}/${DATASET_NAME}/models/
+        mkdir -p ${TMP_DIR}/${DATASET_NAME}/rollout/
+        DATA_PATH="${TMP_DIR}/${DATASET_NAME}/dataset/"
+        MODEL_PATH="${TMP_DIR}/${DATASET_NAME}/models/"
+        ROLLOUT_PATH="${TMP_DIR}/${DATASET_NAME}/rollout/"
+        pytest test/
+        echo "Test paths: ${DATA_PATH} ${MODEL_PATH}"
+        ls
+        python -m gns.train
+        echo "Predict rollout"
+        ls ./gns-sample/WaterDropSample/models/
 
     - name: Run without waiting
       if: github.event_name != 'workflow_run'
-      run: echo "Build and Push to GHCR not triggered, proceeding with GNS Train and Test"
-
-    - name: Train & Test
       run: |
+        echo "Build and Push to GHCR not triggered, proceeding with GNS Train and Test"
         TMP_DIR="./gns-sample"
         DATASET_NAME="WaterDropSample"
         git clone https://github.com/geoelements/gns-sample
