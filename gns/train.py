@@ -425,8 +425,9 @@ def train(rank, cfg, world_size, device):
     if rank == 0 or device == torch.device("cpu"):
         writer = SummaryWriter(log_dir=cfg.logging.tensorboard_dir)
 
-        writer.add_text("Data path", cfg.data.path)
         writer.add_text("metadata", json.dumps(metadata, indent=4))
+        yaml_config = OmegaConf.to_yaml(cfg)
+        writer.add_text("Config", yaml_config, global_step=0)
 
         # Log hyperparameters
         hparam_dict = {
@@ -750,9 +751,6 @@ def main(cfg: Config):
     if device == torch.device("cuda"):
         os.environ["MASTER_ADDR"] = "localhost"
         os.environ["MASTER_PORT"] = "29500"
-
-    # Print the final configuration
-    print(OmegaConf.to_yaml(cfg))
 
     if cfg.mode == "train":
         # If model_path does not exist create new directory.
