@@ -3,11 +3,16 @@ import torch
 import torch.nn as nn
 from torch_geometric.nn import MessagePassing
 from gns import build_kan
+import torch.distributed as dist
 
+
+def printFromMain(message:str):
+  if dist.get_rank() == 0:
+    print(message)
 
 def printModel(model:nn.Module):
   for layer in model:
-    print(layer)
+    printFromMain(layer)
 
 def build_mlp(
         input_size: int,
@@ -66,8 +71,8 @@ class Encoder(nn.Module):
           nedge_out_features: int,
           nmlp_layers: int,
           mlp_hidden_dim: int,
-          kan_param_list: List[int],
-          latent_dim_kan:int,
+          use_kan: int,
+          kan_hidden_dim: int,
           ):
     """The Encoder implements nodes features :math: `\varepsilon_v` and edge
     features :math: `\varepsilon_e` as multilayer perceptrons (MLP) into the
@@ -90,7 +95,7 @@ class Encoder(nn.Module):
 
     """
     super(Encoder, self).__init__()
-    if not kan_param_list:
+    if use_kan == 0:
     # Encode node features as an MLP
       self.node_fn = nn.Sequential(*[build_mlp(nnode_in_features,
                                               [mlp_hidden_dim
@@ -103,20 +108,26 @@ class Encoder(nn.Module):
                                                 for _ in range(nmlp_layers)],
                                               nedge_out_features),
                                     nn.LayerNorm(nedge_out_features)])
-      print(f"we have mlp for ENCODER node_fn")
+      printFromMain(f"we have mlp for ENCODER node_fn")
       printModel(self.node_fn)
-      print(f"we have mlp for ENCODER edge_fn")
+      printFromMain(f"we have mlp for ENCODER edge_fn")
       printModel(self.edge_fn)
       
     else:
-      kan_param_list_node = [nnode_in_features] + kan_param_list + [latent_dim_kan]
-      print(f"we have kan for ENCODER node_fn")
-      self.node_fn = nn.Sequential(*[build_kan.build_kan(kan_param_list_node),
-                                    nn.LayerNorm(latent_dim_kan)])
-      kan_param_list_edge = [nedge_in_features] + kan_param_list + [latent_dim_kan]
-      print(f"we have kan for ENCODER edge_fn")
-      self.edge_fn = nn.Sequential(*[build_kan.build_kan(kan_param_list_edge),
-                                    nn.LayerNorm(latent_dim_kan)])
+      if kan_hidden_dim == 0:
+        kan_list_node = [nnode_in_features, nnode_in_features * 2 + 1, nnode_out_features]
+        kan_list_edge = [nedge_in_features, nedge_in_features * 2 + 1,  nedge_out_features]
+      else:
+        kan_list_node = [nnode_in_features, kan_hidden_dim, nnode_out_features]
+        kan_list_edge = [nedge_in_features, kan_hidden_dim,  nedge_out_features]
+      printFromMain(f"we have kan for ENCODER node_fn {kan_list_node}")
+      printFromMain(f"we have kan for ENCODER edge_fn {kan_list_edge}")
+      self.node_fn = nn.Sequential(*[build_kan.build_kan(kan_list_node),
+                                    nn.LayerNorm(nnode_out_features)])
+      self.edge_fn = nn.Sequential(*[build_kan.build_kan(kan_list_edge),
+                                    nn.LayerNorm(nedge_out_features)])
+
+
 
   def forward(
           self,
@@ -143,8 +154,8 @@ class InteractionNetwork(MessagePassing):
       nedge_out: int,
       nmlp_layers: int,
       mlp_hidden_dim: int,
-      kan_param_list: List[int],
-      latent_dim_kan:int,
+      use_kan: int,
+      kan_hidden_dim: int,
   ):
     """InteractionNetwork derived from torch_geometric MessagePassing class
 
@@ -160,7 +171,7 @@ class InteractionNetwork(MessagePassing):
     # Aggregate features from neighbors
     super(InteractionNetwork, self).__init__(aggr='add')
     # Node MLP
-    if not kan_param_list:
+    if use_kan == 0:
       self.node_fn = nn.Sequential(*[build_mlp(nnode_in + nedge_out,
                                               [mlp_hidden_dim
                                                 for _ in range(nmlp_layers)],
@@ -172,19 +183,24 @@ class InteractionNetwork(MessagePassing):
                                                 for _ in range(nmlp_layers)],
                                               nedge_out),
                                     nn.LayerNorm(nedge_out)])
-      print(f"we have mlp for InteractionNetwork node_fn")
+      printFromMain(f"we have mlp for InteractionNetwork node_fn")
       printModel(self.node_fn)
-      print(f"we have mlp for InteractionNetwork edge_fn")
+      printFromMain(f"we have mlp for InteractionNetwork edge_fn")
       printModel(self.edge_fn)
     else:
-      kan_param_list_node = [latent_dim_kan + latent_dim_kan] + kan_param_list + [latent_dim_kan]
-      print(f"we have kan for InteractionNetwork node_fn")
-      self.node_fn = nn.Sequential(*[build_kan.build_kan(kan_param_list_node),
-                                    nn.LayerNorm(latent_dim_kan)])
-      kan_param_list_edge = [latent_dim_kan + latent_dim_kan + latent_dim_kan] + kan_param_list + [latent_dim_kan]
-      print(f"we have kan for InteractionNetwork edge_fn")
-      self.edge_fn = nn.Sequential(*[build_kan.build_kan(kan_param_list_edge),
-                                    nn.LayerNorm(latent_dim_kan)])
+      if kan_hidden_dim == 0:
+        kan_list_node = [nnode_in + nedge_out, (nnode_in + nedge_out) * 2 + 1, nnode_out]
+        kan_list_edge = [nnode_in + nnode_in + nedge_in, (nnode_in + nnode_in + nedge_in) * 2 + 1,  nedge_out]
+      else:
+        kan_list_node = [nnode_in + nedge_out, kan_hidden_dim, nnode_out]
+        kan_list_edge = [nnode_in + nnode_in + nedge_in, kan_hidden_dim,  nedge_out]
+      printFromMain(f"we have kan for InteractionNetwork node_fn {kan_list_node}")
+      printFromMain(f"we have kan for InteractionNetwork edge_fn {kan_list_edge}")
+      
+      self.node_fn = nn.Sequential(*[build_kan.build_kan(kan_list_node),
+                                    nn.LayerNorm(nnode_out)])
+      self.edge_fn = nn.Sequential(*[build_kan.build_kan(kan_list_edge),
+                                    nn.LayerNorm(nedge_out)])
 
   def forward(self,
               x: torch.tensor,
@@ -281,8 +297,8 @@ class Processor(MessagePassing):
       nmessage_passing_steps: int,
       nmlp_layers: int,
       mlp_hidden_dim: int,
-      kan_param_list: List[int],
-      latent_dim_kan: int,
+      use_kan: int,
+      kan_hidden_dim: int,
   ):
     """Processor derived from torch_geometric MessagePassing class. The 
     processor uses a stack of :math: `M GNs` (where :math: `M` is a 
@@ -312,8 +328,8 @@ class Processor(MessagePassing):
             nedge_out=nedge_out,
             nmlp_layers=nmlp_layers,
             mlp_hidden_dim=mlp_hidden_dim,
-            kan_param_list=kan_param_list,
-            latent_dim_kan=latent_dim_kan,
+            use_kan=use_kan,
+            kan_hidden_dim=kan_hidden_dim,
         ) for _ in range(nmessage_passing_steps)])
 
   def forward(self,
@@ -349,8 +365,8 @@ class Decoder(nn.Module):
           nnode_out: int,
           nmlp_layers: int,
           mlp_hidden_dim: int,
-          kan_param_list: List[int],
-          latent_dim_kan: int,
+          use_kan: int,
+          kan_hidden_dim: int,
           ):
     """The Decoder coder's learned function, :math: `\detla v`, is an MLP. 
     After the Decoder, the future position and velocity are updated using an 
@@ -364,15 +380,18 @@ class Decoder(nn.Module):
       mlp_hidden_dim: Size of the hidden layer (latent dimension of size 128).
     """
     super(Decoder, self).__init__()
-    if not kan_param_list:
+    if use_kan == 0:
       self.node_fn = build_mlp(
           nnode_in, [mlp_hidden_dim for _ in range(nmlp_layers)], nnode_out)
-      print(f"we have mlp for Decoder node_fn")
+      printFromMain(f"we have mlp for Decoder node_fn")
       printModel(self.node_fn)
     else:
-      kan_param_list_node = [latent_dim_kan] + kan_param_list +[nnode_out]
-      print(f"we have kan for Decoder node_fn")
-      self.node_fn = build_kan.build_kan(kan_param_list_node)
+      if kan_hidden_dim == 0:
+        kan_list_node = [nnode_in, nnode_in * 2 + 1, nnode_out]
+      else:
+        kan_list_node = [nnode_in, kan_hidden_dim, nnode_out]
+      printFromMain(f"we have kan for Decoder node_fn {kan_list_node}")
+      self.node_fn = build_kan.build_kan(kan_list_node)
 
   def forward(self,
               x: torch.tensor):
@@ -396,8 +415,8 @@ class EncodeProcessDecode(nn.Module):
       nmessage_passing_steps: int,
       nmlp_layers: int,
       mlp_hidden_dim: int,
-      kan_param_list: List[int],
-      latent_dim_kan: int,
+      use_kan: int,
+      kan_hidden_dim: int,
   ):
     """Encode-Process-Decode function approximator for learnable simulator.
 
@@ -423,8 +442,8 @@ class EncodeProcessDecode(nn.Module):
         nedge_out_features=latent_dim,
         nmlp_layers=nmlp_layers,
         mlp_hidden_dim=mlp_hidden_dim,
-        kan_param_list=kan_param_list,
-        latent_dim_kan=latent_dim_kan,
+        use_kan=use_kan,
+        kan_hidden_dim=kan_hidden_dim,
     )
     self._processor = Processor(
         nnode_in=latent_dim,
@@ -434,16 +453,16 @@ class EncodeProcessDecode(nn.Module):
         nmessage_passing_steps=nmessage_passing_steps,
         nmlp_layers=nmlp_layers,
         mlp_hidden_dim=mlp_hidden_dim,
-        kan_param_list=kan_param_list,
-        latent_dim_kan=latent_dim_kan,
+        use_kan=use_kan,
+        kan_hidden_dim=kan_hidden_dim,
     )
     self._decoder = Decoder(
         nnode_in=latent_dim,
         nnode_out=nnode_out_features,
         nmlp_layers=nmlp_layers,
         mlp_hidden_dim=mlp_hidden_dim,
-        kan_param_list=kan_param_list,
-        latent_dim_kan=latent_dim_kan,
+        use_kan=use_kan,
+        kan_hidden_dim=kan_hidden_dim,
     )
 
   def forward(self,

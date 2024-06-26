@@ -25,8 +25,8 @@ class LearnedSimulator(nn.Module):
           normalization_stats: dict,
           nparticle_types: int,
           particle_type_embedding_size: int,
-          kan_param_list: List[int],
-          latent_dim_kan: int,
+          use_kan: int,
+          kan_hidden_dim: int,
           boundary_clamp_limit: float = 1.0,
           device="cpu",
   ):
@@ -73,7 +73,6 @@ class LearnedSimulator(nn.Module):
     #     nmessage_passing_steps=nmessage_passing_steps,
     #     nmlp_layers=nmlp_layers,
     #     mlp_hidden_dim=mlp_hidden_dim)
-    print(f"initialize the simulate with KAN {kan_param_list}")
     self._encode_process_decode = graph_network_kan.EncodeProcessDecode(
       nnode_in_features=nnode_in,
       nnode_out_features=particle_dimensions,
@@ -82,8 +81,8 @@ class LearnedSimulator(nn.Module):
       nmessage_passing_steps=nmessage_passing_steps,
       nmlp_layers=nmlp_layers,
       mlp_hidden_dim=mlp_hidden_dim,
-      kan_param_list=kan_param_list,
-      latent_dim_kan=latent_dim_kan,
+      use_kan=use_kan,
+      kan_hidden_dim=kan_hidden_dim,
       )
 
     self._device = device

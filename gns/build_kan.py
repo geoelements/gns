@@ -18,7 +18,6 @@ def build_kan(
   Returns:
     mlp: An MLP sequential container.
   """
-  print(f"building KAN with dimension {param_list}")
   model = KAN(param_list)
 
   return model

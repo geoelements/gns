@@ -19,7 +19,12 @@ from gns import learned_simulator
 from gns import noise_utils
 from gns import reading_utils
 from gns import data_loader
-from gns import distribute
+
+import torch
+import torch.distributed as dist
+import torchvision.models as models
+from torch.utils import collect_env
+from torch.utils.data.distributed import DistributedSampler
 
 import datetime
 import time
@@ -48,13 +53,18 @@ flags.DEFINE_float('lr_decay', 0.1, help='Learning rate decay.')
 flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps.')
 
 flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
-flags.DEFINE_integer("n_gpus", 1, help="The number of GPUs to utilize for training.")
+
+# Argument for multinode training
+flags.DEFINE_integer("local-rank", 0, help='local rank for distributed training')
 
 # Parameters for KAN
-flags.DEFINE_list('kan_param_list', None, help='middle layers for KAN')
-flags.DEFINE_integer('latent_dim_kan', 10, help="Latent dimension for KAN")
+flags.DEFINE_integer("use_kan", 0, help='set to 1 to use KAN, 0 to use MLP (default)')
+flags.DEFINE_integer('kan_hidden_dim', 0, help="Latent dimension for KAN")
 
 FLAGS = flags.FLAGS
+
+if 'LOCAL_RANK' in os.environ:
+  local_rank = int(os.environ['LOCAL_RANK'])
 
 
 
@@ -140,11 +150,9 @@ def predict(device: str, flags):
   # Read metadata
   metadata = reading_utils.read_metadata(FLAGS.data_path, "rollout")
   # Params for KAN
-  kan_param_list =flags['kan_param_list']
-  latent_dim_kan = flags['latent_dim_kan']
-  kan_param_list = [int(a) for a in kan_param_list]
-  print(f"kan parameters {kan_param_list} {latent_dim_kan}")
-  simulator = _get_simulator(metadata, FLAGS.noise_std, FLAGS.noise_std, device, kan_param_list, latent_dim_kan)
+  use_kan =flags['use_kan']
+  kan_hidden_dim = flags['kan_hidden_dim']
+  simulator = _get_simulator(metadata, FLAGS.noise_std, FLAGS.noise_std, device, use_kan, kan_hidden_dim)
 
   # Load simulator
   if os.path.exists(FLAGS.model_path + FLAGS.model_file):
@@ -248,12 +256,12 @@ def acceleration_loss(pred_acc, target_acc, non_kinematic_mask):
   loss = loss.sum() / num_non_kinematic
   return loss
 
-def save_model_and_train_state(rank, device, simulator, flags, step, epoch, optimizer,
+def save_model_and_train_state(verbose, device, simulator, flags, step, epoch, optimizer,
                                 train_loss, valid_loss, train_loss_hist, valid_loss_hist):
   """Save model state
   
   Args:
-    rank: local rank
+    verbose: is main rank or cpu
     device: torch device type
     simulator: Trained simulator if not will undergo training.
     flags: flags
@@ -265,7 +273,7 @@ def save_model_and_train_state(rank, device, simulator, flags, step, epoch, opti
     train_loss_hist: training loss history at each epoch
     valid_loss_hist: validation loss history at each epoch
   """
-  if rank == 0 or device == torch.device("cpu"):
+  if verbose:
       if device == torch.device("cpu"):
           simulator.save(flags["model_path"] + 'model-' + str(step) + '.pt')
       else:
@@ -282,16 +290,16 @@ def save_model_and_train_state(rank, device, simulator, flags, step, epoch, opti
                           )
       torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
 
-def train(rank, flags, world_size, device):
+def train(rank, flags, world_size, device, verbose):
   """Train the model.
 
   Args:
     rank: local rank
     world_size: total number of ranks
     device: torch device type
+    verbose: gloabl rank 0 or cpu
   """
   if device == torch.device("cuda"):
-    distribute.setup(rank, world_size, device)
     device_id = rank
   else:
     device_id = device
@@ -300,18 +308,19 @@ def train(rank, flags, world_size, device):
   metadata = reading_utils.read_metadata(flags["data_path"], "train")
 
   # Params for KAN
-  kan_param_list =flags['kan_param_list']
-  latent_dim_kan = flags['latent_dim_kan']
-  kan_param_list = [int(a) for a in kan_param_list]
-  print(f"kan parameters {kan_param_list} {latent_dim_kan}")
+  use_kan =flags['use_kan']
+  kan_hidden_dim = flags['kan_hidden_dim']
 
   # Get simulator and optimizer
   if device == torch.device("cuda"):
-    serial_simulator = _get_simulator(metadata, flags["noise_std"], flags["noise_std"], rank, kan_param_list, latent_dim_kan)
-    simulator = DDP(serial_simulator.to(rank), device_ids=[rank], output_device=rank)
+    serial_simulator = _get_simulator(metadata, flags["noise_std"], flags["noise_std"], rank, use_kan, kan_hidden_dim)
+    serial_simulator = serial_simulator.to('cuda')
+    device_id = rank
+    simulator = DDP(serial_simulator, device_ids=[rank])
     optimizer = torch.optim.Adam(simulator.parameters(), lr=flags["lr_init"]*world_size)
+
   else:
-    simulator = _get_simulator(metadata, flags["noise_std"], flags["noise_std"], device, kan_param_list, latent_dim_kan)
+    simulator = _get_simulator(metadata, flags["noise_std"], flags["noise_std"], device, use_kan, kan_hidden_dim)
     optimizer = torch.optim.Adam(simulator.parameters(), lr=flags["lr_init"] * world_size)
  
   # Initialize training state
@@ -370,28 +379,36 @@ def train(rank, flags, world_size, device):
   simulator.train()
   simulator.to(device_id)
 
-   # Get data loader
-  get_data_loader = (
-    distribute.get_data_distributed_dataloader_by_samples
-    if device == torch.device("cuda")
-    else data_loader.get_data_loader_by_samples
-  )
-
-  # Load training data
-  dl = get_data_loader(
-      path=f'{flags["data_path"]}train.npz',
-      input_length_sequence=INPUT_SEQUENCE_LENGTH,
-      batch_size=flags["batch_size"],
-  )
+  # Get data loader
+  if device == torch.device("cuda"):
+    path=f'{flags["data_path"]}train.npz'
+    input_length_sequence=INPUT_SEQUENCE_LENGTH
+    batch_size=flags["batch_size"]
+    dataset = data_loader.SamplesDataset(path, input_length_sequence)
+    # for multi node training we need to use pytorch's distributed sampler, see https://pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler
+    sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
+    dl = torch.utils.data.DataLoader(dataset=dataset, sampler=sampler, batch_size=batch_size, pin_memory=True, collate_fn=data_loader.collate_fn)
+  else:
+    dl = data_loader.get_data_loader_by_samples(path=f'{flags["data_path"]}train.npz',
+                                                input_length_sequence=INPUT_SEQUENCE_LENGTH,
+                                                batch_size=flags["batch_size"])
   n_features = len(dl.dataset._data[0])
 
   # Load validation data
   if flags["validation_interval"] is not None:
-      dl_valid = get_data_loader(
-          path=f'{flags["data_path"]}valid.npz',
-          input_length_sequence=INPUT_SEQUENCE_LENGTH,
-          batch_size=flags["batch_size"],
-      )
+
+    if device == torch.device("cuda"):
+      path=f'{flags["data_path"]}valid.npz'
+      input_length_sequence=INPUT_SEQUENCE_LENGTH
+      batch_size=flags["batch_size"]
+      dataset = data_loader.SamplesDataset(path, input_length_sequence)
+      sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
+      dl_valid = torch.utils.data.DataLoader(dataset=dataset, sampler=sampler, batch_size=batch_size, pin_memory=True, collate_fn=data_loader.collate_fn)
+    else:
+      dl_valid = data_loader.get_data_loader_by_samples(path=f'{flags["data_path"]}valid.npz',
+                                                  input_length_sequence=INPUT_SEQUENCE_LENGTH,
+                                                  batch_size=flags["batch_size"])
+
       if len(dl_valid.dataset._data[0]) != n_features:
           raise ValueError(
               f"`n_features` of `valid.npz` and `train.npz` should be the same"
@@ -465,7 +482,7 @@ def train(rank, flags, world_size, device):
         for param in optimizer.param_groups:
           param['lr'] = lr_new
 
-        if rank == 0 or device == torch.device("cpu"):
+        if verbose:
           print(f'Training step: {step}/{flags["ntraining_steps"]}. Loss: {loss}.',flush=True)
           if step % 1000 == 0:
             print( '\nTraining time: {}'.format(
@@ -523,11 +540,11 @@ def train(rank, flags, world_size, device):
     pass
 
   # Save model state on keyboard interrupt
-  save_model_and_train_state(rank, device, simulator, flags, step, epoch, optimizer, train_loss, valid_loss, train_loss_hist, valid_loss_hist)
+  save_model_and_train_state(verbose, device, simulator, flags, step, epoch, optimizer, train_loss, valid_loss, train_loss_hist, valid_loss_hist)
 
 
   if torch.cuda.is_available():
-    distribute.cleanup()
+    torch.distributed.destroy_process_group()
 
 
 def _get_simulator(
@@ -535,8 +552,8 @@ def _get_simulator(
         acc_noise_std: float,
         vel_noise_std: float,
         device: torch.device,
-        kan_param_list: List[int],
-        latent_dim_kan: int,
+        use_kan: int,
+        kan_hidden_dim: int,
         ) -> learned_simulator.LearnedSimulator:
   """Instantiates the simulator.
 
@@ -588,8 +605,8 @@ def _get_simulator(
       particle_type_embedding_size=16,
       boundary_clamp_limit=metadata["boundary_augment"] if "boundary_augment" in metadata else 1.0,
       device=device,
-      kan_param_list=kan_param_list,
-      latent_dim_kan=latent_dim_kan,)
+      use_kan=use_kan,
+      kan_hidden_dim=kan_hidden_dim)
 
   return simulator
 
@@ -643,41 +660,63 @@ def main(_):
 
   """
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-  if device == torch.device('cuda'):
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "29500"
 
   myflags = reading_utils.flags_to_dict(FLAGS)
 
   if FLAGS.mode == 'train':
     # If model_path does not exist create new directory.
     if not os.path.exists(FLAGS.model_path):
-      os.makedirs(FLAGS.model_path)
+      os.makedirs(FLAGS.model_path,exist_ok=True)
 
     # Train on gpu 
     if device == torch.device('cuda'):
-      available_gpus = torch.cuda.device_count()
-      print(f"Available GPUs = {available_gpus}")
+      # available_gpus = torch.cuda.device_count()
+      # print(f"Available GPUs = {available_gpus}")
 
-      # Set the number of GPUs based on availability and the specified number
-      if FLAGS.n_gpus is None or FLAGS.n_gpus > available_gpus:
-        world_size = available_gpus
-        if FLAGS.n_gpus is not None:
-          print(f"Warning: The number of GPUs specified ({FLAGS.n_gpus}) exceeds the available GPUs ({available_gpus})")
-      else:
-        world_size = FLAGS.n_gpus
+      # # Set the number of GPUs based on availability and the specified number
+      # if FLAGS.n_gpus is None or FLAGS.n_gpus > available_gpus:
+      #   world_size = available_gpus
+      #   if FLAGS.n_gpus is not None:
+      #     print(f"Warning: The number of GPUs specified ({FLAGS.n_gpus}) exceeds the available GPUs ({available_gpus})")
+      # else:
+      #   world_size = FLAGS.n_gpus
 
-      # Print the status of GPU usage
-      print(f"Using {world_size}/{available_gpus} GPUs")
+      # # Print the status of GPU usage
+      # print(f"Using {world_size}/{available_gpus} GPUs")
 
-      # Spawn training to GPUs
-      distribute.spawn_train(train, myflags, world_size, device)
+      # # Spawn training to GPUs
+      # distribute.spawn_train(train, myflags, world_size, device)
+      torch.multiprocessing.set_start_method('spawn')
+      torch.distributed.init_process_group(
+          backend="nccl",
+          init_method='env://',
+      )
+      world_size = dist.get_world_size()
+      torch.cuda.set_device(local_rank)
+      torch.cuda.manual_seed(0)
+      flags.DEFINE_boolean('verbose', False, 'Verbose.')
+      FLAGS.verbose = dist.get_rank() == 0
+
+      if FLAGS.verbose:
+          print('Collecting env info...')
+          print(collect_env.get_pretty_env_info())
+          print()
+
+      for r in range(torch.distributed.get_world_size()):
+        if r == torch.distributed.get_rank():
+            print(
+                f'Global rank {torch.distributed.get_rank()} initialized: '
+                f'local_rank = {local_rank}, '
+                f'world_size = {torch.distributed.get_world_size()}',
+            )
+      
+      train(local_rank, myflags, world_size, device, FLAGS.verbose)
 
     # Train on cpu  
     else:
       rank = None
       world_size = 1
-      train(rank, myflags, world_size, device)
+      train(rank, myflags, world_size, device, True)
 
   elif FLAGS.mode in ['valid', 'rollout']:
     # Set device
