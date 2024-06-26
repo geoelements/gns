@@ -1,10 +1,19 @@
-FROM continuumio/anaconda3:latest
-RUN conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cpuonly -c pytorch
-RUN conda install pyg -c pyg
-RUN conda install -c anaconda absl-py 
-RUN conda install -c conda-forge numpy
-RUN conda install -c conda-forge dm-tree
-RUN conda install -c conda-forge matplotlib-base
-RUN conda install -c conda-forge pyevtk
-WORKDIR /home/gns
-RUN /bin/bash
+FROM nvcr.io/nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+RUN apt-get update
+RUN apt-get upgrade -y
+
+RUN apt-get install -y python3
+RUN apt-get install -y python3-pip
+RUN apt-get install -y git
+
+RUN pip install --upgrade pip ipython ipykernel
+
+COPY requirements.txt requirements.txt
+ENV PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cu118
+RUN pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu118
+RUN pip install torch_geometric
+RUN pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.3.0+cu118.html
+RUN pip install absl-py autopep8 numpy==1.23.1 dm-tree matplotlib pyevtk pytest tqdm toml
+RUN pip install -r requirements.txt
+
+RUN pip install git+https://github.com/Blealtan/efficient-kan.git --upgrade
