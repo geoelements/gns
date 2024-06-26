@@ -274,21 +274,21 @@ def save_model_and_train_state(verbose, device, simulator, flags, step, epoch, o
     valid_loss_hist: validation loss history at each epoch
   """
   if verbose:
-      if device == torch.device("cpu"):
-          simulator.save(flags["model_path"] + 'model-' + str(step) + '.pt')
-      else:
-          simulator.module.save(flags["model_path"] + 'model-' + str(step) + '.pt')
+    if device == torch.device("cpu"):
+        simulator.save(flags["model_path"] + 'model-' + str(step) + '.pt')
+    else:
+        simulator.module.save(flags["model_path"] + 'model-' + str(step) + '.pt')
 
-      train_state = dict(optimizer_state=optimizer.state_dict(),
-                          global_train_state={
-                            "step": step, 
-                            "epoch": epoch,
-                            "train_loss": train_loss,
-                            "valid_loss": valid_loss
-                            },
-                          loss_history={"train": train_loss_hist, "valid": valid_loss_hist}
-                          )
-      torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
+    train_state = dict(optimizer_state=optimizer.state_dict(),
+                        global_train_state={
+                          "step": step, 
+                          "epoch": epoch,
+                          "train_loss": train_loss,
+                          "valid_loss": valid_loss
+                          },
+                        loss_history={"train": train_loss_hist, "valid": valid_loss_hist}
+                        )
+    torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
 
 def train(rank, flags, world_size, device, verbose):
   """Train the model.
@@ -424,6 +424,7 @@ def train(rank, flags, world_size, device, verbose):
       else:
         pass
       for example in dl:  
+        torch.cuda.empty_cache()
         steps_per_epoch += 1
         # ((position, particle_type, material_property, n_particles_per_example), labels) are in dl
         position = example[0][0].to(device_id)
@@ -492,7 +493,7 @@ def train(rank, flags, world_size, device, verbose):
             start = time.time()
           # Save model state
           if step % flags["nsave_steps"] == 0:
-            save_model_and_train_state(rank, device, simulator, flags, step, epoch, \
+            save_model_and_train_state(verbose, device, simulator, flags, step, epoch, \
                                        optimizer, train_loss, valid_loss, train_loss_hist, valid_loss_hist)
 
         step += 1
@@ -596,7 +597,7 @@ def _get_simulator(
       nedge_in=nedge_in,
       latent_dim=128,
       nmessage_passing_steps=10,
-      nmlp_layers=2,
+      nmlp_layers=1,
       mlp_hidden_dim=128,
       connectivity_radius=metadata['default_connectivity_radius'],
       boundaries=np.array(metadata['bounds']),
@@ -659,6 +660,7 @@ def main(_):
   """Train or evaluates the model.
 
   """
+  torch.cuda.empty_cache()
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
   myflags = reading_utils.flags_to_dict(FLAGS)

@@ -108,10 +108,10 @@ class Encoder(nn.Module):
                                                 for _ in range(nmlp_layers)],
                                               nedge_out_features),
                                     nn.LayerNorm(nedge_out_features)])
-      printFromMain(f"we have mlp for ENCODER node_fn")
-      printModel(self.node_fn)
-      printFromMain(f"we have mlp for ENCODER edge_fn")
-      printModel(self.edge_fn)
+      # printFromMain(f"we have mlp for ENCODER node_fn")
+      # printModel(self.node_fn)
+      # printFromMain(f"we have mlp for ENCODER edge_fn")
+      # printModel(self.edge_fn)
       
     else:
       if kan_hidden_dim == 0:
@@ -120,8 +120,8 @@ class Encoder(nn.Module):
       else:
         kan_list_node = [nnode_in_features, kan_hidden_dim, nnode_out_features]
         kan_list_edge = [nedge_in_features, kan_hidden_dim,  nedge_out_features]
-      printFromMain(f"we have kan for ENCODER node_fn {kan_list_node}")
-      printFromMain(f"we have kan for ENCODER edge_fn {kan_list_edge}")
+      # printFromMain(f"we have kan for ENCODER node_fn {kan_list_node}")
+      # printFromMain(f"we have kan for ENCODER edge_fn {kan_list_edge}")
       self.node_fn = nn.Sequential(*[build_kan.build_kan(kan_list_node),
                                     nn.LayerNorm(nnode_out_features)])
       self.edge_fn = nn.Sequential(*[build_kan.build_kan(kan_list_edge),
@@ -183,10 +183,10 @@ class InteractionNetwork(MessagePassing):
                                                 for _ in range(nmlp_layers)],
                                               nedge_out),
                                     nn.LayerNorm(nedge_out)])
-      printFromMain(f"we have mlp for InteractionNetwork node_fn")
-      printModel(self.node_fn)
-      printFromMain(f"we have mlp for InteractionNetwork edge_fn")
-      printModel(self.edge_fn)
+      # printFromMain(f"we have mlp for InteractionNetwork node_fn")
+      # printModel(self.node_fn)
+      # printFromMain(f"we have mlp for InteractionNetwork edge_fn")
+      # printModel(self.edge_fn)
     else:
       if kan_hidden_dim == 0:
         kan_list_node = [nnode_in + nedge_out, (nnode_in + nedge_out) * 2 + 1, nnode_out]
@@ -194,8 +194,8 @@ class InteractionNetwork(MessagePassing):
       else:
         kan_list_node = [nnode_in + nedge_out, kan_hidden_dim, nnode_out]
         kan_list_edge = [nnode_in + nnode_in + nedge_in, kan_hidden_dim,  nedge_out]
-      printFromMain(f"we have kan for InteractionNetwork node_fn {kan_list_node}")
-      printFromMain(f"we have kan for InteractionNetwork edge_fn {kan_list_edge}")
+      # printFromMain(f"we have kan for InteractionNetwork node_fn {kan_list_node}")
+      # printFromMain(f"we have kan for InteractionNetwork edge_fn {kan_list_edge}")
       
       self.node_fn = nn.Sequential(*[build_kan.build_kan(kan_list_node),
                                     nn.LayerNorm(nnode_out)])
@@ -383,14 +383,14 @@ class Decoder(nn.Module):
     if use_kan == 0:
       self.node_fn = build_mlp(
           nnode_in, [mlp_hidden_dim for _ in range(nmlp_layers)], nnode_out)
-      printFromMain(f"we have mlp for Decoder node_fn")
-      printModel(self.node_fn)
+      # printFromMain(f"we have mlp for Decoder node_fn")
+      # printModel(self.node_fn)
     else:
       if kan_hidden_dim == 0:
         kan_list_node = [nnode_in, nnode_in * 2 + 1, nnode_out]
       else:
         kan_list_node = [nnode_in, kan_hidden_dim, nnode_out]
-      printFromMain(f"we have kan for Decoder node_fn {kan_list_node}")
+      # printFromMain(f"we have kan for Decoder node_fn {kan_list_node}")
       self.node_fn = build_kan.build_kan(kan_list_node)
 
   def forward(self,
