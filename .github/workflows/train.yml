@@ -22,7 +22,7 @@ jobs:
         TMP_DIR="../gns-sample"
         DATASET_NAME="WaterDropSample"
         git clone https://github.com/geoelements/gns-sample ../gns-sample
-        python -m gns.train
+        python -m gns.train mode="train" training.steps=10
 
     - name: Black linter
       run: |
