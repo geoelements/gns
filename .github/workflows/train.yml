@@ -23,3 +23,7 @@ jobs:
         DATASET_NAME="WaterDropSample"
         git clone https://github.com/geoelements/gns-sample ../gns-sample
         python -m gns.train
+
+    - name: Black linter
+      run: |
+        black --check .

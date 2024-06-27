@@ -15,7 +15,13 @@ def load_data(path):
                 data = [item for _, item in data_file.items()]
     elif path.endswith(".h5"):
         with h5py.File(path, "r") as data_file:
-            data = [data_file[key][()] for key in data_file.keys()]
+            data = []
+            for key in data_file.keys():
+                trajectory = data_file[key]
+                positions = trajectory["positions"][()]
+                particle_type = trajectory["particle_type"][()]
+                material_property = trajectory["material_property"][()]
+                data.append((positions, particle_type, material_property))
     else:
         raise ValueError("Unsupported file format. Use .npz or .h5 files.")
     return data

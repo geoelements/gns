@@ -260,9 +260,11 @@ class Render:
                     f"{path}/points{i}",
                     np.array(coord[:, 0]),
                     np.array(coord[:, 1]),
-                    np.zeros_like(coord[:, 1])
-                    if self.dims == 2
-                    else np.array(coord[:, 2]),
+                    (
+                        np.zeros_like(coord[:, 1])
+                        if self.dims == 2
+                        else np.array(coord[:, 2])
+                    ),
                     data={"displacement": disp},
                 )
         print(f"vtk saved to: {self.output_dir}{self.output_name}...")

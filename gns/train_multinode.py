@@ -156,9 +156,9 @@ def rollout(
         "predicted_rollout": predictions.cpu().numpy(),
         "ground_truth_rollout": ground_truth_positions.cpu().numpy(),
         "particle_types": particle_types.cpu().numpy(),
-        "material_property": material_property.cpu().numpy()
-        if material_property is not None
-        else None,
+        "material_property": (
+            material_property.cpu().numpy() if material_property is not None else None
+        ),
     }
 
     return output_dict, loss
@@ -231,9 +231,9 @@ def rollout_par(
         "predicted_rollout": predictions.cpu().numpy(),
         "ground_truth_rollout": ground_truth_positions.cpu().numpy(),
         "particle_types": particle_types.cpu().numpy(),
-        "material_property": material_property.cpu().numpy()
-        if material_property is not None
-        else None,
+        "material_property": (
+            material_property.cpu().numpy() if material_property is not None else None
+        ),
     }
 
     return output_dict, loss
@@ -583,9 +583,9 @@ def train(rank, flags, world_size, verbose):
                     position_sequence=position.to(rank),
                     nparticles_per_example=n_particles_per_example.to(rank),
                     particle_types=particle_type.to(rank),
-                    material_property=material_property.to(rank)
-                    if n_features == 3
-                    else None,
+                    material_property=(
+                        material_property.to(rank) if n_features == 3 else None
+                    ),
                 )
 
                 # Calculate the loss and mask out loss on kinematic particles
@@ -706,9 +706,9 @@ def _get_simulator(
         normalization_stats=normalization_stats,
         nparticle_types=NUM_PARTICLE_TYPES,
         particle_type_embedding_size=16,
-        boundary_clamp_limit=metadata["boundary_augment"]
-        if "boundary_augment" in metadata
-        else 1.0,
+        boundary_clamp_limit=(
+            metadata["boundary_augment"] if "boundary_augment" in metadata else 1.0
+        ),
         device=device,
     )
 

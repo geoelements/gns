@@ -97,9 +97,9 @@ def rollout(
         "predicted_rollout": predictions.cpu().numpy(),
         "ground_truth_rollout": ground_truth_positions.cpu().numpy(),
         "particle_types": particle_types.cpu().numpy(),
-        "material_property": material_property.cpu().numpy()
-        if material_property is not None
-        else None,
+        "material_property": (
+            material_property.cpu().numpy() if material_property is not None else None
+        ),
     }
 
     return output_dict, loss
@@ -501,9 +501,11 @@ def train(rank, cfg, world_size, device):
                             device_or_rank
                         ),
                         particle_types=particle_type.to(device_or_rank),
-                        material_property=material_property.to(device_or_rank)
-                        if n_features == 3
-                        else None,
+                        material_property=(
+                            material_property.to(device_or_rank)
+                            if n_features == 3
+                            else None
+                        ),
                     )
 
                     if (
@@ -690,9 +692,9 @@ def _get_simulator(
         normalization_stats=normalization_stats,
         nparticle_types=num_particle_types,
         particle_type_embedding_size=16,
-        boundary_clamp_limit=metadata["boundary_augment"]
-        if "boundary_augment" in metadata
-        else 1.0,
+        boundary_clamp_limit=(
+            metadata["boundary_augment"] if "boundary_augment" in metadata else 1.0
+        ),
         device=device,
     )
 
@@ -736,9 +738,9 @@ def validation(simulator, example, n_features, cfg, rank, device_id):
             position_sequence=position.to(device_or_rank),
             nparticles_per_example=n_particles_per_example.to(device_or_rank),
             particle_types=particle_type.to(device_or_rank),
-            material_property=material_property.to(device_or_rank)
-            if n_features == 3
-            else None,
+            material_property=(
+                material_property.to(device_or_rank) if n_features == 3 else None
+            ),
         )
 
     # Compute loss
