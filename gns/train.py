@@ -19,7 +19,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from gns import learned_simulator
 from gns import noise_utils
 from gns import reading_utils
-from gns import data_loader
+from gns import particle_data_loader as pdl
 from gns import distribute
 from gns.args import Config
 
@@ -144,7 +144,7 @@ def predict(device: str, cfg: DictConfig):
     )
 
     # Get dataset
-    ds = data_loader.get_data_loader_by_trajectories(path=f"{cfg.data.path}{split}.npz")
+    ds = pdl.get_data_loader(path=f"{cfg.data.path}{split}.npz", mode="trajectory")
     # See if our dataset has material property as feature
     if (
         len(ds.dataset._data[0]) == 3
@@ -393,31 +393,34 @@ def train(rank, cfg, world_size, device):
     simulator.train()
     simulator.to(device_id)
 
-    # Get data loader
-    get_data_loader = (
-        distribute.get_data_distributed_dataloader_by_samples
-        if device == torch.device("cuda")
-        else data_loader.get_data_loader_by_samples
-    )
+    # Determine if we're using distributed training
+    is_distributed = device == torch.device("cuda") and world_size > 1
 
     # Load training data
-    dl = get_data_loader(
-        path=f"{cfg.data.path}train.npz",
-        input_length_sequence=cfg.data.input_sequence_length,
+    dl = pdl.get_data_loader(
+        file_path=f"{cfg.data.path}train.npz",
+        mode="sample",
+        input_sequence_length=cfg.data.input_sequence_length,
         batch_size=cfg.data.batch_size,
+        is_distributed=is_distributed,
     )
-    n_features = len(dl.dataset._data[0])
+    train_dataset = pdl.ParticleDataset(f"{cfg.data.path}train.npz")
+    n_features = train_dataset.get_num_features()
 
     # Load validation data
     if cfg.training.validation_interval is not None:
-        dl_valid = get_data_loader(
-            path=f"{cfg.data.path}valid.npz",
-            input_length_sequence=cfg.data.input_sequence_length,
+        dl_valid = pdl.get_data_loader(
+            file_path=f"{cfg.data.path}valid.npz",
+            mode="sample",
+            input_sequence_length=cfg.data.input_sequence_length,
             batch_size=cfg.data.batch_size,
+            is_distributed=is_distributed,
         )
-        if len(dl_valid.dataset._data[0]) != n_features:
+        valid_dataset = pdl.ParticleDataset(f"{cfg.data.path}valid.npz")
+        valid_n_features = valid_dataset.get_num_features()
+        if valid_n_features != n_features:
             raise ValueError(
-                f"`n_features` of `valid.npz` and `train.npz` should be the same"
+                f"`n_features` of `valid.npz` ({valid_n_features}) and `train.npz` ({n_features}) should be the same"
             )
 
     print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
