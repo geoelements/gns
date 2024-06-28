@@ -1,9 +1,12 @@
 import torch
+<<<<<<< HEAD
 import torch.distributed as dist
 from torch.utils import collect_env
 from torch.utils.data.distributed import DistributedSampler
 
 from gns import data_loader
+=======
+>>>>>>> e3283cf4e5ff4e27c69fd6e9647e7a89c47df303
 
 
 def setup(local_rank: int):
@@ -54,6 +57,7 @@ def spawn_train(train_fxn, flags, world_size, device):
     torch.multiprocessing.spawn(
         train_fxn, args=(flags, world_size, device), nprocs=world_size, join=True
     )
+<<<<<<< HEAD
 
 
 def get_data_distributed_dataloader_by_samples(
@@ -79,3 +83,5 @@ def get_data_distributed_dataloader_by_samples(
     )
 
 
+=======
+>>>>>>> e3283cf4e5ff4e27c69fd6e9647e7a89c47df303

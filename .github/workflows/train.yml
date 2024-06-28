@@ -7,11 +7,15 @@ jobs:
   gns:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/geoelements/gns:config
+      image: ghcr.io/geoelements/gns:dataloader
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+    
+    - name: Black linter
+      run: |
+        black --check .
 
     - name: PyTest
       run: |
@@ -22,4 +26,4 @@ jobs:
         TMP_DIR="../gns-sample"
         DATASET_NAME="WaterDropSample"
         git clone https://github.com/geoelements/gns-sample ../gns-sample
-        python -m gns.train
+        python -m gns.train mode="train" training.steps=10

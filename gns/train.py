@@ -19,7 +19,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from gns import learned_simulator
 from gns import noise_utils
 from gns import reading_utils
-from gns import data_loader
+from gns import particle_data_loader as pdl
 from gns import distribute
 from gns.args import Config
 
@@ -97,9 +97,9 @@ def rollout(
         "predicted_rollout": predictions.cpu().numpy(),
         "ground_truth_rollout": ground_truth_positions.cpu().numpy(),
         "particle_types": particle_types.cpu().numpy(),
-        "material_property": material_property.cpu().numpy()
-        if material_property is not None
-        else None,
+        "material_property": (
+            material_property.cpu().numpy() if material_property is not None else None
+        ),
     }
 
     return output_dict, loss
@@ -139,12 +139,12 @@ def predict(device: str, cfg: DictConfig):
     # Use `valid`` set for eval mode if not use `test`
     split = (
         "test"
-        if (cfg.mode == "rollout" or (not os.path.isfile("{cfg.data_path}valid.npz")))
+        if (cfg.mode == "rollout" or (not os.path.isfile("{cfg.data.path}valid.npz")))
         else "valid"
     )
 
     # Get dataset
-    ds = data_loader.get_data_loader_by_trajectories(path=f"{cfg.data.path}{split}.npz")
+    ds = pdl.get_data_loader(path=f"{cfg.data.path}{split}.npz", mode="trajectory")
     # See if our dataset has material property as feature
     if (
         len(ds.dataset._data[0]) == 3
@@ -393,31 +393,34 @@ def train(rank, cfg, world_size, device, verbose):
     simulator.train()
     simulator.to(device_id)
 
-    # Get data loader
-    get_data_loader = (
-        distribute.get_data_distributed_dataloader_by_samples
-        if device == torch.device("cuda")
-        else data_loader.get_data_loader_by_samples
-    )
+    # Determine if we're using distributed training
+    is_distributed = device == torch.device("cuda") and world_size > 1
 
     # Load training data
-    dl = get_data_loader(
-        path=f"{cfg.data.path}train.npz",
-        input_length_sequence=cfg.data.input_sequence_length,
+    dl = pdl.get_data_loader(
+        file_path=f"{cfg.data.path}train.npz",
+        mode="sample",
+        input_sequence_length=cfg.data.input_sequence_length,
         batch_size=cfg.data.batch_size,
+        is_distributed=is_distributed,
     )
-    n_features = len(dl.dataset._data[0])
+    train_dataset = pdl.ParticleDataset(f"{cfg.data.path}train.npz")
+    n_features = train_dataset.get_num_features()
 
     # Load validation data
     if cfg.training.validation_interval is not None:
-        dl_valid = get_data_loader(
-            path=f"{cfg.data.path}valid.npz",
-            input_length_sequence=cfg.data.input_sequence_length,
+        dl_valid = pdl.get_data_loader(
+            file_path=f"{cfg.data.path}valid.npz",
+            mode="sample",
+            input_sequence_length=cfg.data.input_sequence_length,
             batch_size=cfg.data.batch_size,
+            is_distributed=is_distributed,
         )
-        if len(dl_valid.dataset._data[0]) != n_features:
+        valid_dataset = pdl.ParticleDataset(f"{cfg.data.path}valid.npz")
+        valid_n_features = valid_dataset.get_num_features()
+        if valid_n_features != n_features:
             raise ValueError(
-                f"`n_features` of `valid.npz` and `train.npz` should be the same"
+                f"`n_features` of `valid.npz` ({valid_n_features}) and `train.npz` ({n_features}) should be the same"
             )
 
     print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
@@ -498,9 +501,11 @@ def train(rank, cfg, world_size, device, verbose):
                             device_or_rank
                         ),
                         particle_types=particle_type.to(device_or_rank),
-                        material_property=material_property.to(device_or_rank)
-                        if n_features == 3
-                        else None,
+                        material_property=(
+                            material_property.to(device_or_rank)
+                            if n_features == 3
+                            else None
+                        ),
                     )
 
                     if (
@@ -685,9 +690,9 @@ def _get_simulator(
         normalization_stats=normalization_stats,
         nparticle_types=num_particle_types,
         particle_type_embedding_size=16,
-        boundary_clamp_limit=metadata["boundary_augment"]
-        if "boundary_augment" in metadata
-        else 1.0,
+        boundary_clamp_limit=(
+            metadata["boundary_augment"] if "boundary_augment" in metadata else 1.0
+        ),
         device=device,
     )
 
@@ -731,9 +736,9 @@ def validation(simulator, example, n_features, cfg, rank, device_id):
             position_sequence=position.to(device_or_rank),
             nparticles_per_example=n_particles_per_example.to(device_or_rank),
             particle_types=particle_type.to(device_or_rank),
-            material_property=material_property.to(device_or_rank)
-            if n_features == 3
-            else None,
+            material_property=(
+                material_property.to(device_or_rank) if n_features == 3 else None
+            ),
         )
 
     # Compute loss
