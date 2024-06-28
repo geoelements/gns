@@ -1,25 +1,21 @@
-FROM python:3.11
+FROM nvcr.io/nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+RUN apt-get update
+RUN apt-get upgrade -y
 
-WORKDIR /app
+RUN apt-get install -y python3
+RUN apt-get install -y python3-pip
+RUN apt-get install -y git
 
-COPY requirements.txt .
+RUN pip install --upgrade pip ipython ipykernel
 
-RUN pip3 install --upgrade pip && \
-    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu && \
-    pip3 install torch_geometric && \
-    pip3 install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.3.0+cpu.html && \
-    pip3 install -r requirements.txt
+COPY requirements.txt requirements.txt
+ENV PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cu118
+RUN pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu118
+RUN pip install torch_geometric
+RUN pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.3.0+cu118.html
+RUN pip install absl-py autopep8 numpy==1.23.1 dm-tree matplotlib pyevtk pytest tqdm toml
+RUN pip install -r requirements.txt
 
-ENV PYTHONPATH=/app
 
-# Add Python path to PATH
-ENV PATH="/usr/local/bin:${PATH}"
 
-# Create a bash script to set up the environment
-RUN echo '#!/bin/bash\n\
-export PYTHONPATH=/app\n\
-export PATH="/usr/local/bin:$PATH"\n\
-exec "$@"' > /entrypoint.sh && chmod +x /entrypoint.sh
-
-ENTRYPOINT ["/entrypoint.sh"]
 CMD ["/bin/bash"]
