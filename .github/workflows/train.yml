@@ -12,6 +12,10 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+    
+    - name: Black linter
+      run: |
+        black --check .
 
     - name: PyTest
       run: |
@@ -23,7 +27,3 @@ jobs:
         DATASET_NAME="WaterDropSample"
         git clone https://github.com/geoelements/gns-sample ../gns-sample
         python -m gns.train mode="train" training.steps=10
-
-    - name: Black linter
-      run: |
-        black --check .
