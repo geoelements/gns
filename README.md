@@ -262,20 +262,10 @@ ROLLOUT_PATH="${TMP_DIR}/${DATASET_NAME}/rollout/"
 python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10
 ```
 
-### Building GNS environment on TACC (LS6 and Frontera)
+### Build Docker Image
 
-- to setup a virtualenv
+Dockerfile is supplied to build image.
 
-```shell
-sh ./build_venv.sh
-```
-
-- check tests run sucessfully.
-- start your environment
-
-```shell
-source start_venv.sh 
-```
 
 ### Building GNS on MacOS
 ```shell
@@ -296,16 +286,11 @@ GNS can be trained in parallel on multiple nodes with multiple GPUs.
 > GNS scaling result on [TACC lonestar6 GPU nodes](https://docs.tacc.utexas.edu/hpc/lonestar6/#table2) with A100 GPUs.
 
 ### Usage
-#### Single Node, Multi-GPU
+
 ```shell
-python -m torch.distributed.launch --nnodes=1  --nproc_per_node=[GPU_PER_NODE] --node_rank=[LOCAL_RANK] --master_addr=[MAIN_RANK] gns/train_multinode.py [ARGS] 
+mpiexec.hydra -np $NNODES -ppn 1 ../slurm_scripts/launch_helper.sh $DOCKER_IMG_LOCATION
 ```
 
-#### Multi-node, Multi-GPU
-On each node, run
-```shell
-python -m torch.distributed.launch --nnodes=[NNODES]  --nproc_per_node=[GPU_PER_NODE] --node_rank=[LOCAL_RANK] --master_addr=[MAIN_RANK ]gns/train_multinode.py [ARGS] 
-```
 
 ### Inspiration
 PyTorch version of Graph Network Simulator and Mesh Graph Network Simulator are based on:
