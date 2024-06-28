@@ -242,7 +242,7 @@ def acceleration_loss(pred_acc, target_acc, non_kinematic_mask):
 
 
 def save_model_and_train_state(
-    rank,
+    verbose,
     device,
     simulator,
     cfg,
@@ -269,7 +269,7 @@ def save_model_and_train_state(
       train_loss_hist: training loss history at each epoch
       valid_loss_hist: validation loss history at each epoch
     """
-    if rank == 0 or device == torch.device("cpu"):
+    if verbose:
         if device == torch.device("cpu"):
             simulator.save(cfg.model.path + "model-" + str(step) + ".pt")
         else:
@@ -288,16 +288,16 @@ def save_model_and_train_state(
         torch.save(train_state, f"{cfg.model.path}train_state-{step}.pt")
 
 
-def train(rank, cfg, world_size, device):
+def train(rank, cfg, world_size, device, verbose):
     """Train the model.
 
     Args:
       rank: local rank
       world_size: total number of ranks
       device: torch device type
+      verbose: gloabl rank 0 or cpu
     """
     if device == torch.device("cuda"):
-        distribute.setup(rank, world_size, device)
         device_id = rank
     else:
         device_id = device
@@ -315,7 +315,7 @@ def train(rank, cfg, world_size, device):
             rank,
         )
         simulator = DDP(
-            serial_simulator.to(rank), device_ids=[rank], output_device=rank
+            serial_simulator.to('cuda'), device_ids=[rank]
         )
         optimizer = torch.optim.Adam(
             simulator.parameters(), lr=cfg.training.learning_rate.initial * world_size
@@ -422,7 +422,7 @@ def train(rank, cfg, world_size, device):
 
     print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
 
-    if rank == 0 or device == torch.device("cpu"):
+    if verbose:
         writer = SummaryWriter(log_dir=cfg.logging.tensorboard_dir)
 
         writer.add_text("metadata", json.dumps(metadata, indent=4))
@@ -508,7 +508,7 @@ def train(rank, cfg, world_size, device):
                         and step > 0
                         and step % cfg.training.validation_interval == 0
                     ):
-                        if rank == 0 or device == torch.device("cpu"):
+                        if verbose:
                             sampled_valid_example = next(iter(dl_valid))
                             valid_loss = validation(
                                 simulator,
@@ -542,7 +542,7 @@ def train(rank, cfg, world_size, device):
                         param["lr"] = lr_new
 
                     # Log training loss
-                    if rank == 0 or device == torch.device("cpu"):
+                    if verbose:
                         writer.add_scalar("Loss/train", train_loss, step)
                         writer.add_scalar("Learning Rate", lr_new, step)
 
@@ -554,11 +554,9 @@ def train(rank, cfg, world_size, device):
                     )
                     pbar.update(1)
 
-                    if (
-                        rank == 0 or device == torch.device("cpu")
-                    ) and step % cfg.training.save_steps == 0:
+                    if  verbose and step % cfg.training.save_steps == 0:
                         save_model_and_train_state(
-                            rank,
+                            verbose,
                             device,
                             simulator,
                             cfg,
@@ -597,7 +595,7 @@ def train(rank, cfg, world_size, device):
                     epoch_valid_loss /= world_size
                 valid_loss_hist.append((epoch, epoch_valid_loss.item()))
 
-            if rank == 0 or device == torch.device("cpu"):
+            if verbose:
                 writer.add_scalar("Loss/train_epoch", avg_loss.item(), epoch)
                 if cfg.training.validation_interval is not None:
                     writer.add_scalar(
@@ -611,7 +609,7 @@ def train(rank, cfg, world_size, device):
 
     # Save model state on keyboard interrupt
     save_model_and_train_state(
-        rank,
+        verbose,
         device,
         simulator,
         cfg,
@@ -624,7 +622,7 @@ def train(rank, cfg, world_size, device):
         valid_loss_hist,
     )
 
-    if rank == 0 or device == torch.device("cpu"):
+    if verbose:
         writer.close()
 
     if torch.cuda.is_available():
@@ -748,14 +746,13 @@ def validation(simulator, example, n_features, cfg, rank, device_id):
 def main(cfg: Config):
     """Train or evaluates the model."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if device == torch.device("cuda"):
-        os.environ["MASTER_ADDR"] = "localhost"
-        os.environ["MASTER_PORT"] = "29500"
-
+    if 'LOCAL_RANK' in os.environ:
+        local_rank = int(os.environ['LOCAL_RANK'])
+   
     if cfg.mode == "train":
         # If model_path does not exist create new directory.
         if not os.path.exists(cfg.model.path):
-            os.makedirs(cfg.model.path)
+            os.makedirs(cfg.model.path, exist_ok=True)
 
         # Create TensorBoard log directory
         if not os.path.exists(cfg.logging.tensorboard_dir):
@@ -763,30 +760,16 @@ def main(cfg: Config):
 
         # Train on gpu
         if device == torch.device("cuda"):
-            available_gpus = torch.cuda.device_count()
-            print(f"Available GPUs = {available_gpus}")
-
-            # Set the number of GPUs based on availability and the specified number
-            if cfg.hardware.n_gpus is None or cfg.hardware.n_gpus > available_gpus:
-                world_size = available_gpus
-                if cfg.hardware.n_gpus is not None:
-                    print(
-                        f"Warning: The number of GPUs specified ({cfg.hardware.n_gpus}) exceeds the available GPUs ({available_gpus})"
-                    )
-            else:
-                world_size = cfg.hardware.n_gpus
-
-            # Print the status of GPU usage
-            print(f"Using {world_size}/{available_gpus} GPUs")
-
-            # Spawn training to GPUs
-            distribute.spawn_train(train, cfg, world_size, device)
+            torch.multiprocessing.set_start_method('spawn')
+            verbose, world_size = distribute.setup(local_rank)
 
         # Train on cpu
         else:
-            rank = None
+            local_rank = None
             world_size = 1
-            train(rank, cfg, world_size, device)
+            verbose = True
+
+        train(local_rank, cfg, world_size, device, verbose)
 
     elif cfg.mode in ["valid", "rollout"]:
         # Set device
