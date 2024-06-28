@@ -314,9 +314,7 @@ def train(rank, cfg, world_size, device, verbose):
             cfg.data.noise_std,
             rank,
         )
-        simulator = DDP(
-            serial_simulator.to('cuda'), device_ids=[rank]
-        )
+        simulator = DDP(serial_simulator.to("cuda"), device_ids=[rank])
         optimizer = torch.optim.Adam(
             simulator.parameters(), lr=cfg.training.learning_rate.initial * world_size
         )
@@ -559,7 +557,7 @@ def train(rank, cfg, world_size, device, verbose):
                     )
                     pbar.update(1)
 
-                    if  verbose and step % cfg.training.save_steps == 0:
+                    if verbose and step % cfg.training.save_steps == 0:
                         save_model_and_train_state(
                             verbose,
                             device,
@@ -751,9 +749,9 @@ def validation(simulator, example, n_features, cfg, rank, device_id):
 def main(cfg: Config):
     """Train or evaluates the model."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if 'LOCAL_RANK' in os.environ:
-        local_rank = int(os.environ['LOCAL_RANK'])
-   
+    if "LOCAL_RANK" in os.environ:
+        local_rank = int(os.environ["LOCAL_RANK"])
+
     if cfg.mode == "train":
         # If model_path does not exist create new directory.
         if not os.path.exists(cfg.model.path):
@@ -765,7 +763,7 @@ def main(cfg: Config):
 
         # Train on gpu
         if device == torch.device("cuda"):
-            torch.multiprocessing.set_start_method('spawn')
+            torch.multiprocessing.set_start_method("spawn")
             verbose, world_size = distribute.setup(local_rank)
 
         # Train on cpu
