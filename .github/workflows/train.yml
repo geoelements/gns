@@ -12,6 +12,10 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+        
+    - name: Black linter check
+      run: |
+        black --check .
 
     - name: PyTest
       run: |
