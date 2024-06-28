@@ -1,0 +1,29 @@
+name: GNS Train and Test
+
+on:
+  push:
+
+jobs:
+  gns:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/geoelements/gns:config
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+        
+    - name: Black linter check
+      run: |
+        black --check .
+
+    - name: PyTest
+      run: |
+        pytest test/
+        
+    - name: Train GNS
+      run: |
+        TMP_DIR="../gns-sample"
+        DATASET_NAME="WaterDropSample"
+        git clone https://github.com/geoelements/gns-sample ../gns-sample
+        python -m gns.train

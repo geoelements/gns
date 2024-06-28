@@ -2,40 +2,17 @@ version: 2.0
 jobs:
   gns:
     docker:
-      - image: quay.io/geoelements/gns
+      - image: ghcr.io/geoelements/gns:config
     steps:
       - checkout
-      # GCC
       - run:
           name: Train & Test
           command: |
-            TMP_DIR="./gns-sample"
-            DATASET_NAME="WaterDropSample"
-            git clone https://github.com/geoelements/gns-sample
-            mkdir -p ${TMP_DIR}/${DATASET_NAME}/models/
-            mkdir -p ${TMP_DIR}/${DATASET_NAME}/rollout/
-            DATA_PATH="${TMP_DIR}/${DATASET_NAME}/dataset/"
-            MODEL_PATH="${TMP_DIR}/${DATASET_NAME}/models/"
-            ROLLOUT_PATH="${TMP_DIR}/${DATASET_NAME}/rollout/"
-            conda install -c anaconda absl-py -y
-            conda install -c conda-forge numpy -y
-            conda install -c conda-forge dm-tree -y
-            conda install -c conda-forge matplotlib-base -y
-            conda install -c conda-forge pyevtk -y
-            conda install -c conda-forge pytest -y
-            conda install -c conda-forge tensorboard -y
+            git clone https://github.com/geoelements/gns-sample ../gns-sample
             pytest test/
-            echo "Test paths: ${DATA_PATH} ${MODEL_PATH}"
-            ls
-            python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10
-            echo "Predict rollout"
-            ls ./gns-sample/WaterDropSample/models/
-            
-      - run: 
-          name: Black check 
-          command: |
-            conda install -c conda-forge black -y
-            black --check .
+            python -m gns.train
+            ls ../gns-sample/WaterDropSample/models/
+      
 
 workflows:
     version: 2

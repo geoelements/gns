@@ -1,0 +1,52 @@
+defaults:
+  - _self_
+  - override hydra/hydra_logging: disabled  
+  - override hydra/job_logging: disabled  
+
+hydra:
+  output_subdir: null  
+  run:
+    dir: .
+
+# Top-level configuration
+mode: train
+
+# Data configuration
+data:
+  path: ../gns-sample/WaterDropSample/dataset/
+  batch_size: 2
+  noise_std: 6.7e-4
+  input_sequence_length: 6
+  num_particle_types: 9
+  kinematic_particle_id: 3
+
+# Model configuration
+model:
+  path: ../gns-sample/WaterDropSample/models/
+  file: model-1500.pt
+  train_state_file: train_state-1500.pt
+
+# Output configuration
+output:
+  path: ../gns-sample/WaterDropSample/rollouts/
+  filename: rollout
+
+# Training configuration
+training:
+  steps: 100
+  validation_interval: null
+  save_steps: 500
+  resume: False
+  learning_rate:
+    initial: 1e-4
+    decay: 0.1
+    decay_steps: 50000
+
+# Hardware configuration
+hardware:
+  cuda_device_number: null
+  n_gpus: 1
+
+# Logging configuration
+logging:
+  tensorboard_dir: logs/
