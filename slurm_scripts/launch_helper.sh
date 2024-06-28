@@ -15,7 +15,7 @@ fi
 
 
 PRELOAD="/opt/apps/tacc-apptainer/1.1.8/bin/apptainer exec --nv $1 "
-CMD="torchrun --nproc_per_node 4 --nnodes $NNODES --node_rank=$LOCAL_RANK --master_addr=$MAIN_RANK --master_port=1234 train.py"
+CMD="torchrun --nproc_per_node $2 --nnodes $NNODES --node_rank=$LOCAL_RANK --master_addr=$MAIN_RANK --master_port=1234 train.py"
 
 FULL_CMD="$PRELOAD $CMD"
 echo "Training command: $FULL_CMD"

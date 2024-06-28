@@ -288,7 +288,7 @@ GNS can be trained in parallel on multiple nodes with multiple GPUs.
 ### Usage
 
 ```shell
-mpiexec.hydra -np $NNODES -ppn 1 ../slurm_scripts/launch_helper.sh $DOCKER_IMG_LOCATION
+mpiexec.hydra -np $NNODES -ppn 1 ../slurm_scripts/launch_helper.sh $DOCKER_IMG_LOCATION $n_gpu_per_node
 ```
 
 

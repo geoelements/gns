@@ -16,4 +16,5 @@ scontrol show hostnames  > $NODEFILE
 NNODES=$(< $NODEFILE wc -l)
 
 CONTAINER=$1
-mpiexec.hydra -np $NNODES -ppn 1 ../slurm_scripts/launch_helper.sh $CONTAINER
+n_gpu_per_node=$2
+mpiexec.hydra -np $NNODES -ppn 1 ../slurm_scripts/launch_helper.sh $CONTAINER $n_gpu_per_node
