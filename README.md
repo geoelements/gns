@@ -264,7 +264,7 @@ python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntrain
 
 ### Build Docker Image
 
-Dockerfile is supplied to build image.
+Dockerfile-GPU is supplied to build image with GPU support.
 
 
 ### Building GNS on MacOS
