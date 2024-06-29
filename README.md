@@ -1,7 +1,7 @@
 # Graph Network Simulator (GNS) and MeshNet
 
 [![DOI](https://zenodo.org/badge/427487727.svg)](https://zenodo.org/badge/latestdoi/427487727)
-[![CircleCI](https://dl.circleci.com/status-badge/img/gh/geoelements/gns/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/geoelements/gns/tree/main)
+[![GitHub Actions](https://github.com/geoelements/gns/actions/workflows/train.yml/badge.svg)](https://github.com/geoelements/gns/actions/workflows/train.yml)
 [![Docker](https://img.shields.io/badge/container-gpu-limegreen.svg)](https://ghcr.io/geoelements/gns:gpu)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/geoelements/gns/main/license.md)
 
