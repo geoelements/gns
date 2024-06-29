@@ -406,7 +406,7 @@ def train(rank, cfg, world_size, device, verbose):
       cfg: configuration dictionary
       world_size: total number of ranks
       device: torch device type
-      verbose: gloabl rank 0 or cpu
+      verbose: global rank 0 or cpu
     """
     device_id = rank if device == torch.device("cuda") else device
 
@@ -476,6 +476,7 @@ def train(rank, cfg, world_size, device, verbose):
 
     # Determine if we're using distributed training
     is_distributed = device == torch.device("cuda") and world_size > 1
+    # Load datasets
     train_dl, valid_dl, n_features = load_datasets(cfg, is_distributed)
 
     print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
@@ -627,7 +628,7 @@ def train(rank, cfg, world_size, device, verbose):
             train_loss_hist.append((epoch, avg_loss.item()))
 
             if cfg.training.validation_interval is not None:
-                sampled_valid_example = next(iter(dl_valid))
+                sampled_valid_example = next(iter(valid_dl))
                 epoch_valid_loss = validation(
                     simulator, sampled_valid_example, n_features, cfg, rank, device_id
                 )
