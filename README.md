@@ -1,8 +1,8 @@
 # Graph Network Simulator (GNS) and MeshNet
 
 [![DOI](https://zenodo.org/badge/427487727.svg)](https://zenodo.org/badge/latestdoi/427487727)
-[![CircleCI](https://dl.circleci.com/status-badge/img/gh/geoelements/gns/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/geoelements/gns/tree/main)
-[![Docker](https://quay.io/repository/geoelements/gns/status "Docker Repository on Quay")](https://quay.io/repository/geoelements/gns)
+[![GitHub Actions](https://github.com/geoelements/gns/actions/workflows/train.yml/badge.svg)](https://github.com/geoelements/gns/actions/workflows/train.yml)
+[![Docker](https://img.shields.io/badge/container-gpu-limegreen.svg)](https://ghcr.io/geoelements/gns:gpu)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/geoelements/gns/main/license.md)
 
 > Krishna Kumar, The University of Texas at Austin.
@@ -227,16 +227,14 @@ The dataset is shared on [DesignSafe DataDepot](https://doi.org/10.17603/ds2-fzg
 
 GNS uses [pytorch geometric](https://www.pyg.org/) and [CUDA](https://developer.nvidia.com/cuda-downloads). These packages have specific requirements, please see [PyG installation]((https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html) for details. 
 
-> CPU-only installation on Linux (Conda)
+> CPU-only installation on Linux/MacOS
 
 ```shell
-conda install -y pytorch torchvision torchaudio cpuonly -c pytorch
-conda install -y pyg -c pyg
-conda install -y pytorch-cluster -c pyg
-conda install -y absl-py -c anaconda 
-conda install -y numpy dm-tree matplotlib-base pyevtk -c conda-forge 
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip3 install torch_geometric
+pip3 install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.3.0+cpu.html
+pip3 install -r requirements.txt
 ```
-You can use the [WaterDropletSample](https://github.com/geoelements/gns-sample) dataset to check if your `gns` code is working correctly.
 
 To test the code you can run:
 
@@ -244,36 +242,14 @@ To test the code you can run:
 pytest test/
 ```
 
-To test on the small waterdroplet sample:
-
-```
-git clone https://github.com/geoelements/gns-sample
-
-TMP_DIR="./gns-sample"
-DATASET_NAME="WaterDropSample"
-
-mkdir -p ${TMP_DIR}/${DATASET_NAME}/models/
-mkdir -p ${TMP_DIR}/${DATASET_NAME}/rollout/
-
-DATA_PATH="${TMP_DIR}/${DATASET_NAME}/dataset/"
-MODEL_PATH="${TMP_DIR}/${DATASET_NAME}/models/"
-ROLLOUT_PATH="${TMP_DIR}/${DATASET_NAME}/rollout/"
-
-python -m gns.train --data_path=${DATA_PATH} --model_path=${MODEL_PATH} --ntraining_steps=10
-```
-
 ### Build Docker Image
 
 Dockerfile-GPU is supplied to build image with GPU support.
 
-
-### Building GNS on MacOS
-```shell
-pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-pip3 install torch_geometric
-pip3 install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.3.0+cpu.html
-pip3 install -r requirements.txt
 ```
+docker pull ghcr.io/geoelements/gns:gpu
+```
+
 
 ## GNS training in parallel
 GNS can be trained in parallel on multiple nodes with multiple GPUs.

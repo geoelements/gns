@@ -16,6 +16,4 @@ RUN pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_co
 RUN pip install absl-py autopep8 numpy==1.23.1 dm-tree matplotlib pyevtk pytest tqdm toml
 RUN pip install -r requirements.txt
 
-
-
 CMD ["/bin/bash"]
