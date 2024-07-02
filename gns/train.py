@@ -19,7 +19,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from gns import learned_simulator
 from gns import noise_utils
 from gns import reading_utils
-from gns import data_loader
+from gns import particle_data_loader as pdl
 from gns import distribute
 from gns.args import Config
 
@@ -144,13 +144,13 @@ def predict(device: str, cfg: DictConfig):
     )
 
     # Get dataset
-    ds = data_loader.get_data_loader_by_trajectories(path=f"{cfg.data.path}{split}.npz")
+    ds = pdl.get_data_loader(file_path=f"{cfg.data.path}{split}.npz", mode="trajectory")
     # See if our dataset has material property as feature
-    if (
-        len(ds.dataset._data[0]) == 3
-    ):  # `ds` has (positions, particle_type, material_property)
+    test_dataset = pdl.ParticleDataset(f"{cfg.data.path}{split}.npz")
+    n_features = test_dataset.get_num_features()
+    if n_features == 3:  # `ds` has (positions, particle_type, material_property)
         material_property_as_feature = True
-    elif len(ds.dataset._data[0]) == 2:  # `ds` only has (positions, particle_type)
+    elif n_features == 2:  # `ds` only has (positions, particle_type)
         material_property_as_feature = False
     else:
         raise NotImplementedError
@@ -242,7 +242,7 @@ def acceleration_loss(pred_acc, target_acc, non_kinematic_mask):
 
 
 def save_model_and_train_state(
-    rank,
+    verbose,
     device,
     simulator,
     cfg,
@@ -269,7 +269,7 @@ def save_model_and_train_state(
       train_loss_hist: training loss history at each epoch
       valid_loss_hist: validation loss history at each epoch
     """
-    if rank == 0 or device == torch.device("cpu"):
+    if verbose:
         if device == torch.device("cpu"):
             simulator.save(cfg.model.path + "model-" + str(step) + ".pt")
         else:
@@ -288,24 +288,16 @@ def save_model_and_train_state(
         torch.save(train_state, f"{cfg.model.path}train_state-{step}.pt")
 
 
-def train(rank, cfg, world_size, device):
-    """Train the model.
+def setup_simulator_and_optimizer(cfg, metadata, rank, world_size, device):
+    """Setup simulator and optimizer.
 
     Args:
-      rank: local rank
-      world_size: total number of ranks
-      device: torch device type
+        cfg: Configuration dictionary.
+        metadata: Metadata.
+        rank: Local rank.
+        world_size: Total number of ranks.
+        device: torch device type.
     """
-    if device == torch.device("cuda"):
-        distribute.setup(rank, world_size, device)
-        device_id = rank
-    else:
-        device_id = device
-
-    # Read metadata
-    metadata = reading_utils.read_metadata(cfg.data.path, "train")
-
-    # Get simulator and optimizer
     if device == torch.device("cuda"):
         serial_simulator = _get_simulator(
             metadata,
@@ -314,9 +306,7 @@ def train(rank, cfg, world_size, device):
             cfg.data.noise_std,
             rank,
         )
-        simulator = DDP(
-            serial_simulator.to(rank), device_ids=[rank], output_device=rank
-        )
+        simulator = DDP(serial_simulator.to("cuda"), device_ids=[rank])
         optimizer = torch.optim.Adam(
             simulator.parameters(), lr=cfg.training.learning_rate.initial * world_size
         )
@@ -331,6 +321,116 @@ def train(rank, cfg, world_size, device):
         optimizer = torch.optim.Adam(
             simulator.parameters(), lr=cfg.training.learning_rate.initial * world_size
         )
+    return simulator, optimizer
+
+
+def initialize_training(cfg, rank, world_size, device):
+    """Initialize training.
+
+    Args:
+      cfg: Configuration dictionary.
+      rank: Local rank.
+      world_size: Total number of ranks.
+      device: torch device type.
+    """
+    metadata = reading_utils.read_metadata(cfg.data.path, "train")
+    simulator, optimizer = setup_simulator_and_optimizer(
+        cfg, metadata, rank, world_size, device
+    )
+    return simulator, optimizer, metadata
+
+
+def load_datasets(cfg, is_distributed):
+    # Train data loader
+    train_dl = pdl.get_data_loader(
+        file_path=f"{cfg.data.path}train.npz",
+        mode="sample",
+        input_sequence_length=cfg.data.input_sequence_length,
+        batch_size=cfg.data.batch_size,
+        is_distributed=is_distributed,
+    )
+    train_dataset = pdl.ParticleDataset(f"{cfg.data.path}train.npz")
+    n_features = train_dataset.get_num_features()
+
+    # Validation data loader
+    valid_dl = None
+    if cfg.training.validation_interval is not None:
+        valid_dl = pdl.get_data_loader(
+            file_path=f"{cfg.data.path}valid.npz",
+            mode="sample",
+            input_sequence_length=cfg.data.input_sequence_length,
+            batch_size=cfg.data.batch_size,
+            is_distributed=is_distributed,
+        )
+        valid_dataset = pdl.ParticleDataset(f"{cfg.data.path}valid.npz")
+        if valid_dataset.get_num_features() != n_features:
+            raise ValueError(
+                f"`n_features` of `valid.npz` and `train.npz` should be the same"
+            )
+
+    return train_dl, valid_dl, n_features
+
+
+def setup_tensorboard(cfg, metadata):
+    """Setup tensorboard.
+
+    Args:
+        cfg: Configuration dictionary.
+        metadata: Metadata.
+    """
+    writer = SummaryWriter(log_dir=cfg.logging.tensorboard_dir)
+
+    writer.add_text("metadata", json.dumps(metadata, indent=4))
+    yaml_config = OmegaConf.to_yaml(cfg)
+    writer.add_text("Config", yaml_config, global_step=0)
+
+    # Log hyperparameters
+    hparam_dict = {
+        "lr_init": cfg.training.learning_rate.initial,
+        "lr_decay": cfg.training.learning_rate.decay,
+        "lr_decay_steps": cfg.training.learning_rate.decay_steps,
+        "batch_size": cfg.data.batch_size,
+        "noise_std": cfg.data.noise_std,
+        "ntraining_steps": cfg.training.steps,
+    }
+    metric_dict = {"train_loss": 0, "valid_loss": 0}  # Initial values
+    writer.add_hparams(hparam_dict, metric_dict)
+    return writer
+
+
+def prepare_data(example, device_id):
+    """Prepare data for training or validation."""
+    position = example[0][0].to(device_id)
+    particle_type = example[0][1].to(device_id)
+
+    if len(example[0]) == 4:  # if data loader includes material_property
+        material_property = example[0][2].to(device_id)
+        n_particles_per_example = example[0][3].to(device_id)
+    elif len(example[0]) == 3:
+        material_property = None
+        n_particles_per_example = example[0][2].to(device_id)
+    else:
+        raise ValueError("Unexpected number of elements in the data loader")
+
+    labels = example[1].to(device_id)
+
+    return position, particle_type, material_property, n_particles_per_example, labels
+
+
+def train(rank, cfg, world_size, device, verbose):
+    """Train the model.
+
+    Args:
+      rank: local rank
+      cfg: configuration dictionary
+      world_size: total number of ranks
+      device: torch device type
+      verbose: global rank 0 or cpu
+    """
+    device_id = rank if device == torch.device("cuda") else device
+
+    # Initialize simulator and optimizer
+    simulator, optimizer, metadata = initialize_training(cfg, rank, world_size, device)
 
     # Initialize training state
     step = 0
@@ -393,58 +493,17 @@ def train(rank, cfg, world_size, device):
     simulator.train()
     simulator.to(device_id)
 
-    # Get data loader
-    get_data_loader = (
-        distribute.get_data_distributed_dataloader_by_samples
-        if device == torch.device("cuda")
-        else data_loader.get_data_loader_by_samples
-    )
-
-    # Load training data
-    dl = get_data_loader(
-        path=f"{cfg.data.path}train.npz",
-        input_length_sequence=cfg.data.input_sequence_length,
-        batch_size=cfg.data.batch_size,
-    )
-    n_features = len(dl.dataset._data[0])
-
-    # Load validation data
-    if cfg.training.validation_interval is not None:
-        dl_valid = get_data_loader(
-            path=f"{cfg.data.path}valid.npz",
-            input_length_sequence=cfg.data.input_sequence_length,
-            batch_size=cfg.data.batch_size,
-        )
-        if len(dl_valid.dataset._data[0]) != n_features:
-            raise ValueError(
-                f"`n_features` of `valid.npz` and `train.npz` should be the same"
-            )
+    # Determine if we're using distributed training
+    is_distributed = device == torch.device("cuda") and world_size > 1
+    # Load datasets
+    train_dl, valid_dl, n_features = load_datasets(cfg, is_distributed)
 
     print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
 
-    if rank == 0 or device == torch.device("cpu"):
-        writer = SummaryWriter(log_dir=cfg.logging.tensorboard_dir)
-
-        writer.add_text("metadata", json.dumps(metadata, indent=4))
-        yaml_config = OmegaConf.to_yaml(cfg)
-        writer.add_text("Config", yaml_config, global_step=0)
-
-        # Log hyperparameters
-        hparam_dict = {
-            "lr_init": cfg.training.learning_rate.initial,
-            "lr_decay": cfg.training.learning_rate.decay,
-            "lr_decay_steps": cfg.training.learning_rate.decay_steps,
-            "batch_size": cfg.data.batch_size,
-            "noise_std": cfg.data.noise_std,
-            "ntraining_steps": cfg.training.steps,
-        }
-        metric_dict = {"train_loss": 0, "valid_loss": 0}  # Initial values
-        writer.add_hparams(hparam_dict, metric_dict)
+    writer = setup_tensorboard(cfg, metadata) if verbose else None
 
     try:
-        num_epochs = max(
-            1, (cfg.training.steps + len(dl) - 1) // len(dl)
-        )  # Calculate total epochs
+        num_epochs = max(1, (cfg.training.steps + len(train_dl) - 1) // len(train_dl))
         print(f"Total epochs = {num_epochs}")
         for epoch in tqdm(range(epoch, num_epochs), desc="Training", unit="epoch"):
             if device == torch.device("cuda"):
@@ -454,19 +513,17 @@ def train(rank, cfg, world_size, device):
             steps_this_epoch = 0
 
             # Create a tqdm progress bar for each epoch
-            with tqdm(total=len(dl), desc=f"Epoch {epoch}", unit="batch") as pbar:
-                for example in dl:
+            with tqdm(total=len(train_dl), desc=f"Epoch {epoch}", unit="batch") as pbar:
+                for example in train_dl:
                     steps_per_epoch += 1
-                    position = example[0][0].to(device_id)
-                    particle_type = example[0][1].to(device_id)
-                    if n_features == 3:
-                        material_property = example[0][2].to(device_id)
-                        n_particles_per_example = example[0][3].to(device_id)
-                    elif n_features == 2:
-                        n_particles_per_example = example[0][2].to(device_id)
-                    else:
-                        raise NotImplementedError
-                    labels = example[1].to(device_id)
+                    # Prepare data
+                    (
+                        position,
+                        particle_type,
+                        material_property,
+                        n_particles_per_example,
+                        labels,
+                    ) = prepare_data(example, device_id)
 
                     n_particles_per_example = n_particles_per_example.to(device_id)
                     labels = labels.to(device_id)
@@ -510,8 +567,8 @@ def train(rank, cfg, world_size, device):
                         and step > 0
                         and step % cfg.training.validation_interval == 0
                     ):
-                        if rank == 0 or device == torch.device("cpu"):
-                            sampled_valid_example = next(iter(dl_valid))
+                        if verbose:
+                            sampled_valid_example = next(iter(valid_dl))
                             valid_loss = validation(
                                 simulator,
                                 sampled_valid_example,
@@ -544,7 +601,7 @@ def train(rank, cfg, world_size, device):
                         param["lr"] = lr_new
 
                     # Log training loss
-                    if rank == 0 or device == torch.device("cpu"):
+                    if verbose:
                         writer.add_scalar("Loss/train", train_loss, step)
                         writer.add_scalar("Learning Rate", lr_new, step)
 
@@ -556,11 +613,9 @@ def train(rank, cfg, world_size, device):
                     )
                     pbar.update(1)
 
-                    if (
-                        rank == 0 or device == torch.device("cpu")
-                    ) and step % cfg.training.save_steps == 0:
+                    if verbose and step % cfg.training.save_steps == 0:
                         save_model_and_train_state(
-                            rank,
+                            verbose,
                             device,
                             simulator,
                             cfg,
@@ -588,7 +643,7 @@ def train(rank, cfg, world_size, device):
             train_loss_hist.append((epoch, avg_loss.item()))
 
             if cfg.training.validation_interval is not None:
-                sampled_valid_example = next(iter(dl_valid))
+                sampled_valid_example = next(iter(valid_dl))
                 epoch_valid_loss = validation(
                     simulator, sampled_valid_example, n_features, cfg, rank, device_id
                 )
@@ -599,7 +654,7 @@ def train(rank, cfg, world_size, device):
                     epoch_valid_loss /= world_size
                 valid_loss_hist.append((epoch, epoch_valid_loss.item()))
 
-            if rank == 0 or device == torch.device("cpu"):
+            if verbose:
                 writer.add_scalar("Loss/train_epoch", avg_loss.item(), epoch)
                 if cfg.training.validation_interval is not None:
                     writer.add_scalar(
@@ -613,7 +668,7 @@ def train(rank, cfg, world_size, device):
 
     # Save model state on keyboard interrupt
     save_model_and_train_state(
-        rank,
+        verbose,
         device,
         simulator,
         cfg,
@@ -626,7 +681,7 @@ def train(rank, cfg, world_size, device):
         valid_loss_hist,
     )
 
-    if rank == 0 or device == torch.device("cpu"):
+    if verbose:
         writer.close()
 
     if torch.cuda.is_available():
@@ -699,16 +754,10 @@ def _get_simulator(
 
 
 def validation(simulator, example, n_features, cfg, rank, device_id):
-    position = example[0][0].to(device_id)
-    particle_type = example[0][1].to(device_id)
-    if n_features == 3:  # if dl includes material_property
-        material_property = example[0][2].to(device_id)
-        n_particles_per_example = example[0][3].to(device_id)
-    elif n_features == 2:
-        n_particles_per_example = example[0][2].to(device_id)
-    else:
-        raise NotImplementedError
-    labels = example[1].to(device_id)
+
+    position, particle_type, material_property, n_particles_per_example, labels = (
+        prepare_data(example, device_id)
+    )
 
     # Sample the noise to add to the inputs.
     sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(
@@ -750,14 +799,13 @@ def validation(simulator, example, n_features, cfg, rank, device_id):
 def main(cfg: Config):
     """Train or evaluates the model."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if device == torch.device("cuda"):
-        os.environ["MASTER_ADDR"] = "localhost"
-        os.environ["MASTER_PORT"] = "29500"
+    if "LOCAL_RANK" in os.environ:
+        local_rank = int(os.environ["LOCAL_RANK"])
 
     if cfg.mode == "train":
         # If model_path does not exist create new directory.
         if not os.path.exists(cfg.model.path):
-            os.makedirs(cfg.model.path)
+            os.makedirs(cfg.model.path, exist_ok=True)
 
         # Create TensorBoard log directory
         if not os.path.exists(cfg.logging.tensorboard_dir):
@@ -765,30 +813,16 @@ def main(cfg: Config):
 
         # Train on gpu
         if device == torch.device("cuda"):
-            available_gpus = torch.cuda.device_count()
-            print(f"Available GPUs = {available_gpus}")
-
-            # Set the number of GPUs based on availability and the specified number
-            if cfg.hardware.n_gpus is None or cfg.hardware.n_gpus > available_gpus:
-                world_size = available_gpus
-                if cfg.hardware.n_gpus is not None:
-                    print(
-                        f"Warning: The number of GPUs specified ({cfg.hardware.n_gpus}) exceeds the available GPUs ({available_gpus})"
-                    )
-            else:
-                world_size = cfg.hardware.n_gpus
-
-            # Print the status of GPU usage
-            print(f"Using {world_size}/{available_gpus} GPUs")
-
-            # Spawn training to GPUs
-            distribute.spawn_train(train, cfg, world_size, device)
+            torch.multiprocessing.set_start_method("spawn")
+            verbose, world_size = distribute.setup(local_rank)
 
         # Train on cpu
         else:
-            rank = None
+            local_rank = None
             world_size = 1
-            train(rank, cfg, world_size, device)
+            verbose = True
+
+        train(local_rank, cfg, world_size, device, verbose)
 
     elif cfg.mode in ["valid", "rollout"]:
         # Set device

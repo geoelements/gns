@@ -1,6 +1,7 @@
 absl-py
 black
 dm-tree
+h5py
 hydra-core
 matplotlib
 numpy==1.23.1
