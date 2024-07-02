@@ -144,13 +144,13 @@ def predict(device: str, cfg: DictConfig):
     )
 
     # Get dataset
-    ds = pdl.get_data_loader(path=f"{cfg.data.path}{split}.npz", mode="trajectory")
+    ds = pdl.get_data_loader(file_path=f"{cfg.data.path}{split}.npz", mode="trajectory")
     # See if our dataset has material property as feature
-    if (
-        len(ds.dataset._data[0]) == 3
-    ):  # `ds` has (positions, particle_type, material_property)
+    test_dataset = pdl.ParticleDataset(f"{cfg.data.path}{split}.npz")
+    n_features = test_dataset.get_num_features()
+    if n_features == 3:  # `ds` has (positions, particle_type, material_property)
         material_property_as_feature = True
-    elif len(ds.dataset._data[0]) == 2:  # `ds` only has (positions, particle_type)
+    elif n_features == 2:  # `ds` only has (positions, particle_type)
         material_property_as_feature = False
     else:
         raise NotImplementedError
