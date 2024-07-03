@@ -154,7 +154,7 @@ def mock_distributed_env(monkeypatch):
 
 def test_get_data_loader_distributed(dummy_npz_data, mock_distributed_env):
     data_path, _ = dummy_npz_data
-    loader = get_data_loader(data_path, is_distributed=True)
+    loader = get_data_loader(data_path, use_dist=True)
 
     assert isinstance(loader, DataLoader)
     assert isinstance(loader.sampler, DistributedSampler)
