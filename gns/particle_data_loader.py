@@ -178,7 +178,7 @@ def get_data_loader(
     input_sequence_length=6,
     batch_size=32,
     shuffle=True,
-    is_distributed=False,
+    use_dist=False,
 ):
     """
     Get a data loader for the ParticleDataset.
@@ -189,14 +189,14 @@ def get_data_loader(
         input_sequence_length (int): Length of input sequence.
         batch_size (int): Batch size for the data loader.
         shuffle (bool): Whether to shuffle the data.
-        is_distributed (bool): Whether to use DistributedSampler for distributed training.
+        use_dist (bool): Whether to use DistributedSampler for distributed training.
 
     Returns:
         DataLoader: A PyTorch DataLoader object.
     """
     dataset = ParticleDataset(file_path, input_sequence_length, mode)
 
-    if is_distributed:
+    if use_dist:
         sampler = DistributedSampler(dataset, shuffle=shuffle)
         shuffle = False  # DistributedSampler handles shuffling
     else:
