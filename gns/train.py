@@ -8,6 +8,7 @@ import sys
 
 import numpy as np
 import torch
+import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
@@ -788,6 +789,14 @@ def train_maml(rank, cfg, world_size, device, verbose, use_dist):
     # Extract the Encoder from the simulator
     main_encoder = simulator._encode_process_decode._encoder
 
+    # Extract the correct dimensions from the main encoder
+    nnode_in_features = main_encoder.node_fn[0].in_features
+    nnode_out_features = main_encoder.node_fn[-1].normalized_shape[0]
+    nedge_in_features = main_encoder.edge_fn[0].in_features
+    nedge_out_features = main_encoder.edge_fn[-1].normalized_shape[0]
+    nmlp_layers = len([m for m in main_encoder.node_fn if isinstance(m, nn.Linear)]) - 1
+    mlp_hidden_dim = main_encoder.node_fn[1].out_features
+
     # Load datasets
     train_dl, valid_dl, n_features = load_datasets(cfg, use_dist)
 
@@ -849,19 +858,19 @@ def train_maml(rank, cfg, world_size, device, verbose, use_dist):
                     )
 
                     # MAML inner loop
-                    if material_property is not None:
+                    if material_property is not None and n_features == 3:
                         unique_materials = material_property.unique()
                         adapted_encoders = {}
 
                         for material in unique_materials:
-                            # Clone the Encoder for this material
+                            # Clone the Encoder for this material with correct dimensions
                             material_encoder = Encoder(
-                                nnode_in_features=30,
-                                nnode_out_features=128,
-                                nedge_in_features=3,
-                                nedge_out_features=128,
-                                nmlp_layers=2,  # Subtract input and output layers
-                                mlp_hidden_dim=128
+                                nnode_in_features=nnode_in_features,
+                                nnode_out_features=nnode_out_features,
+                                nedge_in_features=nedge_in_features,
+                                nedge_out_features=nedge_out_features,
+                                nmlp_layers=nmlp_layers,
+                                mlp_hidden_dim=mlp_hidden_dim
                             ).to(device_id)
                             material_encoder.load_state_dict(main_encoder.state_dict())
                             material_encoder_optimizer = torch.optim.SGD(
@@ -944,6 +953,16 @@ def train_maml(rank, cfg, world_size, device, verbose, use_dist):
                                     ),
                                     dim=0,
                                 )
+
+                    else:
+                        # If no material property, just use the main encoder
+                        node_features, edge_index, edge_features = simulator._encoder_preprocessor(
+                            position,
+                            n_particles_per_example,
+                            particle_type,
+                            None
+                        )
+                        encoded_nodes, encoded_edges = main_encoder(node_features, edge_features)
 
                     # Outer loop (meta-update)
                     (
