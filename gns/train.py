@@ -703,8 +703,8 @@ def train(rank, cfg, world_size, device, verbose, use_dist):
         distribute.cleanup()
 
 
-def train_maml(rank, cfg, world_size, device, verbose):
-    """Train the model using Model Agnostic Meta Learning (MAML) with correct outer loop updates.
+def train_maml(rank, cfg, world_size, device, verbose, use_dist):
+    """Train the model using Model Agnostic Meta Learning (MAML).
 
     Args:
       rank: local rank
@@ -712,45 +712,108 @@ def train_maml(rank, cfg, world_size, device, verbose):
       world_size: total number of ranks
       device: torch device type
       verbose: global rank 0 or cpu
+      use_dist: use torch.distribute
     """
     device_id = rank if device == torch.device("cuda") else device
 
     # Initialize simulator and optimizer
-    simulator, optimizer, metadata = initialize_training(cfg, rank, world_size, device)
+    simulator, optimizer, metadata = initialize_training(
+        cfg, rank, world_size, device, use_dist
+    )
 
     # Initialize training state
     step = 0
     epoch = 0
+    steps_per_epoch = 0
+
+    valid_loss = None
+    train_loss = 0
+    epoch_valid_loss = None
+
+    train_loss_hist = []
+    valid_loss_hist = []
+
+    # MAML hyperparameters
+    inner_lr = cfg.training.maml.inner_lr
+    num_inner_steps = cfg.training.maml.num_inner_steps
+
+    # If model_path does exist and model_file and train_state_file exist continue training.
+    if cfg.model.file is not None and cfg.training.resume:
+        if cfg.model.file == "latest" and cfg.model.train_state_file == "latest":
+            # find the latest model, assumes model and train_state files are in step.
+            fnames = glob.glob(f"{cfg.model.path}*model*pt")
+            max_model_number = 0
+            expr = re.compile(".*model-(\d+).pt")
+            for fname in fnames:
+                model_num = int(expr.search(fname).groups()[0])
+                if model_num > max_model_number:
+                    max_model_number = model_num
+            # reset names to point to the latest.
+            cfg.model.file = f"model-{max_model_number}.pt"
+            cfg.model.train_state_file = f"train_state-{max_model_number}.pt"
+
+        if os.path.exists(cfg.model.path + cfg.model.file) and os.path.exists(
+            cfg.model.path + cfg.model.train_state_file
+        ):
+            # load model
+            if use_dist:
+                simulator.module.load(cfg.model.path + cfg.model.file)
+            else:
+                simulator.load(cfg.model.path + cfg.model.file)
+
+            # load train state
+            train_state = torch.load(cfg.model.path + cfg.model.train_state_file)
+
+            # set optimizer state
+            optimizer = torch.optim.Adam(
+                simulator.module.parameters() if use_dist else simulator.parameters()
+            )
+            optimizer.load_state_dict(train_state["optimizer_state"])
+            optimizer_to(optimizer, device_id)
+
+            # set global train state
+            step = train_state["global_train_state"]["step"]
+            epoch = train_state["global_train_state"]["epoch"]
+            train_loss_hist = train_state["loss_history"]["train"]
+            valid_loss_hist = train_state["loss_history"]["valid"]
+
+        else:
+            msg = f"Specified model_file {cfg.model.path + cfg.model.file} and train_state_file {cfg.model.path + cfg.model.train_state_file} not found."
+            raise FileNotFoundError(msg)
+
+    simulator.train()
+    simulator.to(device_id)
 
     # Load datasets
-    train_dl, valid_dl, n_features = load_datasets(
-        cfg, is_distributed=(device == torch.device("cuda") and world_size > 1)
-    )
+    train_dl, valid_dl, n_features = load_datasets(cfg, use_dist)
+
+    print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
 
     writer = setup_tensorboard(cfg, metadata) if verbose else None
 
-    # MAML hyperparameters (hard-coded)
-    inner_lr = 0.01
-    num_inner_steps = 5
-
-    # Get unique material properties
-    unique_materials = set()
-    for batch in train_dl:
-        if len(batch[0]) == 4:  # if data loader includes material_property
-            unique_materials.update(batch[0][2].unique().tolist())
-    unique_materials = list(unique_materials)
-
     try:
         num_epochs = max(1, (cfg.training.steps + len(train_dl) - 1) // len(train_dl))
-        for epoch in tqdm(range(epoch, num_epochs), desc="Training", unit="epoch"):
-            if device == torch.device("cuda"):
+        if verbose:
+            print(f"Total epochs = {num_epochs}")
+        for epoch in tqdm(
+            range(epoch, num_epochs), desc="Training", unit="epoch", disable=not verbose
+        ):
+            if use_dist:
                 torch.distributed.barrier()
 
             epoch_loss = 0.0
             steps_this_epoch = 0
 
-            with tqdm(total=len(train_dl), desc=f"Epoch {epoch}", unit="batch") as pbar:
+            # Create a tqdm progress bar for each epoch
+            with tqdm(
+                # resume from one step after the checkpoint
+                range(step % len(train_dl) + 1, len(train_dl)),
+                desc=f"Epoch {epoch}",
+                unit="batch",
+                disable=not verbose,
+            ) as pbar:
                 for example in train_dl:
+                    steps_per_epoch += 1
                     # Prepare data
                     (
                         position,
@@ -760,128 +823,97 @@ def train_maml(rank, cfg, world_size, device, verbose):
                         labels,
                     ) = prepare_data(example, device_id)
 
+                    n_particles_per_example = n_particles_per_example.to(device_id)
+                    labels = labels.to(device_id)
+
+                    sampled_noise = (
+                        noise_utils.get_random_walk_noise_for_position_sequence(
+                            position, noise_std_last_step=cfg.data.noise_std
+                        ).to(device_id)
+                    )
+                    non_kinematic_mask = (
+                        (particle_type != cfg.data.kinematic_particle_id)
+                        .clone()
+                        .detach()
+                        .to(device_id)
+                    )
+                    sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
+
+                    device_or_rank = rank if device == torch.device("cuda") else device
+                    predict_fn = (
+                        simulator.module.predict_accelerations
+                        if use_dist
+                        else simulator.predict_accelerations
+                    )
+
                     # MAML inner loop
                     if material_property is not None:
-                        material_encoders = {}
-                        material_losses = {}
+                        unique_materials = material_property.unique()
+                        adapted_encoders = {}
 
                         for material in unique_materials:
                             # Clone the encoder for this material
-                            material_encoders[material] = type(simulator._encoder)(
-                                **simulator._encoder.state_dict()
-                            )
-                            material_encoder_optimizer = torch.optim.SGD(
-                                material_encoders[material].parameters(), lr=inner_lr
-                            )
+                            material_encoder = type(simulator._encoder)(**simulator._encoder.state_dict())
+                            material_encoder_optimizer = torch.optim.SGD(material_encoder.parameters(), lr=inner_lr)
 
                             # Select data for this material
-                            material_mask = material_property == material
+                            material_mask = (material_property == material)
                             material_position = position[material_mask]
                             material_particle_type = particle_type[material_mask]
                             material_labels = labels[material_mask]
                             material_n_particles = torch.sum(material_mask).unsqueeze(0)
+                            material_noise = sampled_noise[material_mask]
 
                             for _ in range(num_inner_steps):
-                                sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(
-                                    material_position,
-                                    noise_std_last_step=cfg.data.noise_std,
-                                ).to(
-                                    device_id
-                                )
-                                non_kinematic_mask = (
-                                    (
-                                        material_particle_type
-                                        != cfg.data.kinematic_particle_id
-                                    )
-                                    .clone()
-                                    .detach()
-                                    .to(device_id)
-                                )
-                                sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
-
-                                # Forward pass through the inner encoder
-                                node_features, edge_features = material_encoders[
-                                    material
-                                ](material_position, material_particle_type)
-
-                                # Forward pass through the rest of the model
-                                x, edge_features = simulator._processor(
-                                    node_features, edge_index, edge_features
-                                )
-                                pred_acc = simulator._decoder(x)
-
-                                target_acc = simulator._inverse_decoder_postprocessor(
-                                    material_labels, material_position
-                                )
-                                inner_loss = acceleration_loss(
-                                    pred_acc, target_acc, non_kinematic_mask
+                                pred_acc, target_acc = predict_fn(
+                                    next_positions=material_labels.to(device_or_rank),
+                                    position_sequence_noise=material_noise.to(device_or_rank),
+                                    position_sequence=material_position.to(device_or_rank),
+                                    nparticles_per_example=material_n_particles.to(device_or_rank),
+                                    particle_types=material_particle_type.to(device_or_rank),
+                                    material_property=material.to(device_or_rank),
+                                    encoder=material_encoder
                                 )
 
+                                inner_loss = acceleration_loss(pred_acc, target_acc, non_kinematic_mask[material_mask])
+                                
                                 material_encoder_optimizer.zero_grad()
                                 inner_loss.backward()
                                 material_encoder_optimizer.step()
 
-                            # Compute final loss for this material
-                            with torch.no_grad():
-                                node_features, edge_features = material_encoders[
-                                    material
-                                ](material_position, material_particle_type)
-                                x, edge_features = simulator._processor(
-                                    node_features, edge_index, edge_features
-                                )
-                                pred_acc = simulator._decoder(x)
-                                target_acc = simulator._inverse_decoder_postprocessor(
-                                    material_labels, material_position
-                                )
-                                material_losses[material] = acceleration_loss(
-                                    pred_acc, target_acc, non_kinematic_mask
-                                )
+                            adapted_encoders[material] = material_encoder
+
+                        # Update the main encoder with the average of adapted encoders
+                        with torch.no_grad():
+                            for name, param in simulator._encoder.named_parameters():
+                                param.data = torch.mean(torch.stack([adapted_encoders[m].state_dict()[name] for m in unique_materials]), dim=0)
 
                     # Outer loop (meta-update)
-                    optimizer.zero_grad()
-                    total_loss = 0
+                    pred_acc, target_acc = predict_fn(
+                        next_positions=labels.to(device_or_rank),
+                        position_sequence_noise=sampled_noise.to(device_or_rank),
+                        position_sequence=position.to(device_or_rank),
+                        nparticles_per_example=n_particles_per_example.to(
+                            device_or_rank
+                        ),
+                        particle_types=particle_type.to(device_or_rank),
+                        material_property=(
+                            material_property.to(device_or_rank)
+                            if n_features == 3
+                            else None
+                        ),
+                    )
 
-                    for material in unique_materials:
-                        # Select data for this material
-                        material_mask = material_property == material
-                        material_position = position[material_mask]
-                        material_particle_type = particle_type[material_mask]
-                        material_labels = labels[material_mask]
-                        material_n_particles = torch.sum(material_mask).unsqueeze(0)
+                    loss = acceleration_loss(pred_acc, target_acc, non_kinematic_mask)
 
-                        # Forward pass using the adapted encoder and the rest of the model
-                        node_features, edge_features = material_encoders[material](
-                            material_position, material_particle_type
-                        )
-                        x, edge_features = simulator._processor(
-                            node_features, edge_index, edge_features
-                        )
-                        pred_acc = simulator._decoder(x)
-
-                        target_acc = simulator._inverse_decoder_postprocessor(
-                            material_labels, material_position
-                        )
-                        non_kinematic_mask = (
-                            (material_particle_type != cfg.data.kinematic_particle_id)
-                            .clone()
-                            .detach()
-                            .to(device_id)
-                        )
-                        material_loss = acceleration_loss(
-                            pred_acc, target_acc, non_kinematic_mask
-                        )
-
-                        total_loss += material_loss
-
-                    # Compute gradients and update the model
-                    total_loss.backward()
-                    optimizer.step()
-
-                    train_loss = total_loss.item()
+                    train_loss = loss.item()
                     epoch_loss += train_loss
                     steps_this_epoch += 1
 
-                    # Update learning rate
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
                     lr_new = (
                         cfg.training.learning_rate.initial
                         * (
@@ -890,8 +922,8 @@ def train_maml(rank, cfg, world_size, device, verbose):
                         )
                         * world_size
                     )
-                    for param_group in optimizer.param_groups:
-                        param_group["lr"] = lr_new
+                    for param in optimizer.param_groups:
+                        param["lr"] = lr_new
 
                     # Log training loss
                     if verbose:
@@ -916,40 +948,51 @@ def train_maml(rank, cfg, world_size, device, verbose):
                             epoch,
                             optimizer,
                             train_loss,
-                            None,
-                            [],
-                            [],
+                            valid_loss,
+                            train_loss_hist,
+                            valid_loss_hist,
+                            use_dist,
                         )
 
                     step += 1
                     if step >= cfg.training.steps:
                         break
 
-            # Epoch level statistics and validation
+            # Epoch level statistics
             avg_loss = torch.tensor([epoch_loss / steps_this_epoch]).to(device_id)
-            if device == torch.device("cuda"):
+            if use_dist:
                 torch.distributed.reduce(
                     avg_loss, dst=0, op=torch.distributed.ReduceOp.SUM
                 )
                 avg_loss /= world_size
 
+            train_loss_hist.append((epoch, avg_loss.item()))
+
+            if cfg.training.validation_interval is not None:
+                sampled_valid_example = next(iter(valid_dl))
+                epoch_valid_loss = validation(
+                    simulator, sampled_valid_example, n_features, cfg, rank, device_id
+                )
+                if device == torch.device("cuda"):
+                    torch.distributed.reduce(
+                        epoch_valid_loss, dst=0, op=torch.distributed.ReduceOp.SUM
+                    )
+                    epoch_valid_loss /= world_size
+                valid_loss_hist.append((epoch, epoch_valid_loss.item()))
+
             if verbose:
                 writer.add_scalar("Loss/train_epoch", avg_loss.item(), epoch)
-
-            if cfg.training.validation_interval is not None and valid_dl:
-                valid_loss = validation(
-                    simulator, next(iter(valid_dl)), n_features, cfg, rank, device_id
-                )
-                if verbose:
-                    writer.add_scalar("Loss/valid_epoch", valid_loss.item(), epoch)
+                if cfg.training.validation_interval is not None:
+                    writer.add_scalar(
+                        "Loss/valid_epoch", epoch_valid_loss.item(), epoch
+                    )
 
             if step >= cfg.training.steps:
                 break
-
     except KeyboardInterrupt:
         pass
 
-    # Save final model state
+    # Save model state on keyboard interrupt
     save_model_and_train_state(
         verbose,
         device,
@@ -959,15 +1002,16 @@ def train_maml(rank, cfg, world_size, device, verbose):
         epoch,
         optimizer,
         train_loss,
-        None,
-        [],
-        [],
+        valid_loss,
+        train_loss_hist,
+        valid_loss_hist,
+        use_dist,
     )
 
     if verbose:
         writer.close()
 
-    if torch.cuda.is_available():
+    if use_dist:
         distribute.cleanup()
 
 
