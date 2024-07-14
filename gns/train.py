@@ -853,11 +853,15 @@ def train_maml(rank, cfg, world_size, device, verbose, use_dist):
 
                         for material in unique_materials:
                             # Clone the encoder for this material
-                            material_encoder = type(simulator._encoder)(**simulator._encoder.state_dict())
-                            material_encoder_optimizer = torch.optim.SGD(material_encoder.parameters(), lr=inner_lr)
+                            material_encoder = type(simulator._encoder)(
+                                **simulator._encoder.state_dict()
+                            )
+                            material_encoder_optimizer = torch.optim.SGD(
+                                material_encoder.parameters(), lr=inner_lr
+                            )
 
                             # Select data for this material
-                            material_mask = (material_property == material)
+                            material_mask = material_property == material
                             material_position = position[material_mask]
                             material_particle_type = particle_type[material_mask]
                             material_labels = labels[material_mask]
@@ -867,16 +871,28 @@ def train_maml(rank, cfg, world_size, device, verbose, use_dist):
                             for _ in range(num_inner_steps):
                                 pred_acc, target_acc = predict_fn(
                                     next_positions=material_labels.to(device_or_rank),
-                                    position_sequence_noise=material_noise.to(device_or_rank),
-                                    position_sequence=material_position.to(device_or_rank),
-                                    nparticles_per_example=material_n_particles.to(device_or_rank),
-                                    particle_types=material_particle_type.to(device_or_rank),
+                                    position_sequence_noise=material_noise.to(
+                                        device_or_rank
+                                    ),
+                                    position_sequence=material_position.to(
+                                        device_or_rank
+                                    ),
+                                    nparticles_per_example=material_n_particles.to(
+                                        device_or_rank
+                                    ),
+                                    particle_types=material_particle_type.to(
+                                        device_or_rank
+                                    ),
                                     material_property=material.to(device_or_rank),
-                                    encoder=material_encoder
+                                    encoder=material_encoder,
                                 )
 
-                                inner_loss = acceleration_loss(pred_acc, target_acc, non_kinematic_mask[material_mask])
-                                
+                                inner_loss = acceleration_loss(
+                                    pred_acc,
+                                    target_acc,
+                                    non_kinematic_mask[material_mask],
+                                )
+
                                 material_encoder_optimizer.zero_grad()
                                 inner_loss.backward()
                                 material_encoder_optimizer.step()
@@ -886,7 +902,15 @@ def train_maml(rank, cfg, world_size, device, verbose, use_dist):
                         # Update the main encoder with the average of adapted encoders
                         with torch.no_grad():
                             for name, param in simulator._encoder.named_parameters():
-                                param.data = torch.mean(torch.stack([adapted_encoders[m].state_dict()[name] for m in unique_materials]), dim=0)
+                                param.data = torch.mean(
+                                    torch.stack(
+                                        [
+                                            adapted_encoders[m].state_dict()[name]
+                                            for m in unique_materials
+                                        ]
+                                    ),
+                                    dim=0,
+                                )
 
                     # Outer loop (meta-update)
                     pred_acc, target_acc = predict_fn(
