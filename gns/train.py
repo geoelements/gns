@@ -733,7 +733,7 @@ def train_maml(rank, cfg, world_size, device, verbose, use_dist):
     train_loss_hist = []
     valid_loss_hist = []
 
-    # MAML hyperparameters
+    # MAML hyperparameters (hardcoded)
     inner_lr = 1e-3
     num_inner_steps = 10
 
@@ -854,18 +854,22 @@ def train_maml(rank, cfg, world_size, device, verbose, use_dist):
 
                         for material in unique_materials:
                             # Clone the Encoder for this material
-                            material_encoder = type(main_encoder)(
-                                nnode_in_features=main_encoder.node_fn[0].in_features,
-                                nnode_out_features=main_encoder.node_fn[
+                            material_encoder = Encoder(
+                                nnode_in_features=main_encoder.node_fn[0][
+                                    0
+                                ].in_features,
+                                nnode_out_features=main_encoder.node_fn[0][
                                     -1
                                 ].out_features,
-                                nedge_in_features=main_encoder.edge_fn[0].in_features,
-                                nedge_out_features=main_encoder.edge_fn[
+                                nedge_in_features=main_encoder.edge_fn[0][
+                                    0
+                                ].in_features,
+                                nedge_out_features=main_encoder.edge_fn[0][
                                     -1
                                 ].out_features,
-                                nmlp_layers=len(main_encoder.node_fn)
+                                nmlp_layers=len(main_encoder.node_fn[0])
                                 - 2,  # Subtract input and output layers
-                                mlp_hidden_dim=main_encoder.node_fn[1].out_features,
+                                mlp_hidden_dim=main_encoder.node_fn[0][1].out_features,
                             ).to(device_id)
                             material_encoder.load_state_dict(main_encoder.state_dict())
                             material_encoder_optimizer = torch.optim.SGD(
