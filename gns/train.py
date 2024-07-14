@@ -857,9 +857,9 @@ def train_maml(rank, cfg, world_size, device, verbose, use_dist):
                             # Clone the Encoder for this material
                             material_encoder = Encoder(
                                 nnode_in_features=main_encoder.node_fn[0][0].in_features,
-                                nnode_out_features=main_encoder.node_fn[0][-1].out_features,
+                                nnode_out_features=main_encoder.node_fn[-1].normalized_shape[0],
                                 nedge_in_features=main_encoder.edge_fn[0][0].in_features,
-                                nedge_out_features=main_encoder.edge_fn[0][-1].out_features,
+                                nedge_out_features=main_encoder.edge_fn[-1].normalized_shape[0],
                                 nmlp_layers=len(main_encoder.node_fn[0]) - 2,  # Subtract input and output layers
                                 mlp_hidden_dim=main_encoder.node_fn[0][1].out_features
                             ).to(device_id)
