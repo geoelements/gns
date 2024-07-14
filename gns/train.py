@@ -790,12 +790,12 @@ def train_maml(rank, cfg, world_size, device, verbose, use_dist):
     main_encoder = simulator._encode_process_decode._encoder
 
     # Extract the correct dimensions from the main encoder
-    nnode_in_features = main_encoder.node_fn[0].in_features
-    nnode_out_features = main_encoder.node_fn[-1].normalized_shape[0]
-    nedge_in_features = main_encoder.edge_fn[0].in_features
-    nedge_out_features = main_encoder.edge_fn[-1].normalized_shape[0]
+    nnode_in_features=main_encoder.node_fn[0][0].in_features,
+    nnode_out_features=main_encoder.node_fn[-1].normalized_shape[0],
+    nedge_in_features=main_encoder.edge_fn[0][0].in_features,
+    nedge_out_features=main_encoder.edge_fn[-1].normalized_shape[0],
     nmlp_layers = len([m for m in main_encoder.node_fn if isinstance(m, nn.Linear)]) - 1
-    mlp_hidden_dim = main_encoder.node_fn[1].out_features
+    mlp_hidden_dim = 128 # main_encoder.node_fn[1].out_features
 
     # Load datasets
     train_dl, valid_dl, n_features = load_datasets(cfg, use_dist)
