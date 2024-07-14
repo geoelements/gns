@@ -886,53 +886,24 @@ def train_maml(rank, cfg, world_size, device, verbose, use_dist):
                             material_noise = sampled_noise[material_mask]
 
                             for _ in range(num_inner_steps):
-                                # Prepare input for the Encoder
-                                (
-                                    node_features,
-                                    edge_index,
-                                    edge_features,
-                                ) = simulator._encoder_preprocessor(
-                                    material_position,
-                                    material_n_particles,
-                                    material_particle_type,
-                                    material_property[material_mask]
-                                    if n_features == 3
-                                    else None,
-                                )
-
-                                # Use the material-specific Encoder
-                                encoded_nodes, encoded_edges = material_encoder(
-                                    node_features, edge_features
-                                )
+                                # Temporarily replace the simulator's encoder
+                                original_encoder = simulator._encode_process_decode._encoder
+                                simulator._encode_process_decode._encoder = material_encoder
 
                                 pred_acc, target_acc = predict_fn(
                                     next_positions=material_labels.to(device_or_rank),
-                                    position_sequence_noise=material_noise.to(
-                                        device_or_rank
-                                    ),
-                                    position_sequence=material_position.to(
-                                        device_or_rank
-                                    ),
-                                    nparticles_per_example=material_n_particles.to(
-                                        device_or_rank
-                                    ),
-                                    particle_types=material_particle_type.to(
-                                        device_or_rank
-                                    ),
-                                    material_property=material.to(device_or_rank)
-                                    if n_features == 3
-                                    else None,
-                                    encoder_output=(
-                                        encoded_nodes,
-                                        encoded_edges,
-                                        edge_index,
-                                    ),
+                                    position_sequence_noise=material_noise.to(device_or_rank),
+                                    position_sequence=material_position.to(device_or_rank),
+                                    nparticles_per_example=material_n_particles.to(device_or_rank),
+                                    particle_types=material_particle_type.to(device_or_rank),
+                                    material_property=material.to(device_or_rank) if n_features == 3 else None
                                 )
 
+                                # Restore the original encoder
+                                simulator._encode_process_decode._encoder = original_encoder
+
                                 inner_loss = acceleration_loss(
-                                    pred_acc,
-                                    target_acc,
-                                    non_kinematic_mask[material_mask],
+                                    pred_acc, target_acc, non_kinematic_mask[material_mask]
                                 )
 
                                 material_encoder_optimizer.zero_grad()
@@ -944,15 +915,10 @@ def train_maml(rank, cfg, world_size, device, verbose, use_dist):
                         # Update the main Encoder with the average of adapted Encoders
                         with torch.no_grad():
                             for name, param in main_encoder.named_parameters():
-                                param.data = torch.mean(
-                                    torch.stack(
-                                        [
-                                            adapted_encoders[m].state_dict()[name]
-                                            for m in unique_materials
-                                        ]
-                                    ),
-                                    dim=0,
-                                )
+                                param.data = torch.mean(torch.stack([
+                                    adapted_encoders[m].state_dict()[name]
+                                    for m in unique_materials
+                                ]), dim=0)
 
                     else:
                         # If no material property, just use the main encoder
