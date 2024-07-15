@@ -12,8 +12,10 @@ from collections import defaultdict
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from torch.nn.parallel import DistributedDataParallel as DDP
+
 from tqdm import tqdm
 
 import hydra
@@ -815,7 +817,7 @@ def train_maml(rank, cfg, world_size, device, verbose, use_dist):
                     # Identify the material property and use the corresponding encoder
                     material_id = material_property[0].item()  # Assuming all materials in the batch are the same
                     task_encoder = task_encoders[material_id]
-                    task_optimizer = optim.Adam(task_encoder.parameters(), lr=inner_lr)
+                    task_optimizer = torch.optim.Adam(task_encoder.parameters(), lr=inner_lr)
 
                     # Perform a few steps of gradient descent in the inner loop
                     for _ in range(inner_steps):
