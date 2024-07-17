@@ -46,7 +46,6 @@ class TrainingConfig:
 @dataclass
 class HardwareConfig:
     cuda_device_number: Optional[int] = None
-    n_gpus: int = 1
 
 
 @dataclass
