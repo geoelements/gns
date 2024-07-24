@@ -45,7 +45,6 @@ training:
 # Hardware configuration
 hardware:
   cuda_device_number: null
-  n_gpus: 1
 
 # Logging configuration
 logging:
