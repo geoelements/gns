@@ -1,0 +1,51 @@
+defaults:
+  - _self_
+  - override hydra/hydra_logging: disabled  
+  - override hydra/job_logging: disabled  
+
+hydra:
+  output_subdir: null  
+  run:
+    dir: .
+
+# Top-level configuration
+mode: train
+
+# Data configuration
+data:
+  path: ../gns-sample/Cylinder/dataset/
+  batch_size: 2
+  noise_std: 2e-3
+  input_sequence_length: 1
+  node_type_embedding_size: 9
+  dt: 0.01
+
+# Model configuration
+model:
+  path: ../gns-sample/Cylinder/models/
+  file: model-100.pt
+  train_state_file: train_state-100.pt
+
+# Output configuration
+output:
+  path: ../gns-sample/Cylinder/rollouts/
+  filename: rollout
+
+# Training configuration
+training:
+  steps: 100
+  validation_interval: null
+  save_steps: 500
+  resume: False
+  learning_rate:
+    initial: 1e-4
+    decay: 0.1
+    decay_steps: 5000000
+
+# Hardware configuration
+hardware:
+  cuda_device_number: null
+
+# Logging configuration
+logging:
+  tensorboard_dir: logs/

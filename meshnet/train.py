@@ -3,14 +3,16 @@ import os
 import glob
 import numpy as np
 import torch
+from torch.utils.tensorboard import SummaryWriter
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch_geometric.transforms as T
 import re
 import pickle
 from tqdm import tqdm
+import json
 
-from absl import flags
-from absl import app
+import hydra
+from omegaconf import DictConfig, OmegaConf
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from meshnet import data_loader
@@ -19,57 +21,9 @@ from meshnet.noise import get_velocity_noise
 from meshnet.utils import datas_to_graph
 from meshnet.utils import NodeType
 from meshnet.utils import optimizer_to
+from meshnet.args import Config
+from meshnet import reading_utils
 
-
-flags.DEFINE_enum(
-    "mode",
-    "train",
-    ["train", "valid", "rollout"],
-    help="Train model, validation or rollout evaluation.",
-)
-flags.DEFINE_integer("batch_size", 2, help="The batch size.")
-flags.DEFINE_string("data_path", None, help="The dataset directory.")
-flags.DEFINE_string(
-    "model_path", "model/", help=("The path for saving checkpoints of the model.")
-)
-flags.DEFINE_string(
-    "output_path", "rollouts/", help="The path for saving outputs (e.g. rollouts)."
-)
-flags.DEFINE_string(
-    "model_file",
-    None,
-    help=(
-        'Model filename (.pt) to resume from. Can also use "latest" to default to newest file.'
-    ),
-)
-flags.DEFINE_string(
-    "train_state_file",
-    None,
-    help=(
-        'Train state filename (.pt) to resume from. Can also use "latest" to default to newest file.'
-    ),
-)
-flags.DEFINE_integer(
-    "cuda_device_number",
-    None,
-    help="CUDA device (zero indexed), default is None so default CUDA device will be used.",
-)
-flags.DEFINE_string("rollout_filename", "rollout", help="Name saving the rollout")
-flags.DEFINE_integer("ntraining_steps", int(1e7), help="Number of training steps.")
-flags.DEFINE_integer(
-    "nsave_steps", int(5000), help="Number of steps at which to save the model."
-)
-FLAGS = flags.FLAGS
-
-
-INPUT_SEQUENCE_LENGTH = 1
-noise_std = 2e-2
-node_type_embedding_size = 9
-dt = 0.01
-lr_init = 1e-4
-lr_decay_rate = 0.1
-lr_decay_steps = 5e6
-loss_report_step = 10
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # an instance that transforms face-based graph to edge-based graph. Edge features are auto-computed using "Cartesian" and "Distance"
@@ -78,56 +32,122 @@ transformer = T.Compose(
 )
 
 
-def predict(simulator: learned_simulator.MeshSimulator, device: str):
+def setup_tensorboard(cfg, metadata):
+    """Setup tensorboard.
+
+    Args:
+        cfg: Configuration dictionary.
+        metadata: Metadata.
+    """
+    writer = SummaryWriter(log_dir=cfg.logging.tensorboard_dir)
+
+    if metadata:
+        writer.add_text("metadata", json.dumps(metadata, indent=4))
+    yaml_config = OmegaConf.to_yaml(cfg)
+    writer.add_text("Config", yaml_config, global_step=0)
+
+    # Log hyperparameters
+    hparam_dict = {
+        "lr_init": cfg.training.learning_rate.initial,
+        "lr_decay": cfg.training.learning_rate.decay,
+        "lr_decay_steps": cfg.training.learning_rate.decay_steps,
+        "batch_size": cfg.data.batch_size,
+        "noise_std": cfg.data.noise_std,
+        "ntraining_steps": cfg.training.steps,
+    }
+    metric_dict = {"train_loss": 0, "valid_loss": 0}  # Initial values
+    writer.add_hparams(hparam_dict, metric_dict)
+    return writer
+
+
+def save_model_and_train_state(
+    simulator,
+    cfg,
+    step,
+    epoch,
+    optimizer,
+    train_loss,
+    valid_loss,
+    train_loss_hist,
+    valid_loss_hist,
+):
+    """Save model state
+
+    Args:
+      rank: local rank
+      device: torch device type
+      simulator: Trained simulator if not will undergo training.
+      cfg: Configuration dictionary.
+      step: step
+      epoch: epoch
+      optimizer: optimizer
+      train_loss: training loss at current step
+      valid_loss: validation loss at current step
+      train_loss_hist: training loss history at each epoch
+      valid_loss_hist: validation loss history at each epoch
+    """
+    simulator.save(cfg.model.path + "model-" + str(step) + ".pt")
+    train_state = dict(
+        optimizer_state=optimizer.state_dict(),
+        global_train_state={
+            "step": step,
+            "epoch": epoch,
+            "train_loss": train_loss,
+            "valid_loss": valid_loss,
+        },
+        loss_history={"train": train_loss_hist, "valid": valid_loss_hist},
+    )
+    torch.save(train_state, f"{cfg.model.path}train_state-{step}.pt")
+
+
+def predict(simulator: learned_simulator.MeshSimulator, device: str, cfg):
     # Load simulator
-    if os.path.exists(FLAGS.model_path + FLAGS.model_file):
-        simulator.load(FLAGS.model_path + FLAGS.model_file)
+    if os.path.exists(cfg.model.path + cfg.model.file):
+        simulator.load(cfg.model.path + cfg.model.file)
     else:
-        raise Exception(
-            f"Model does not exist at {FLAGS.model_path + FLAGS.model_file}"
-        )
+        raise Exception(f"Model does not exist at {cfg.model.path + cfg.model.file}")
 
     simulator.to(device)
     simulator.eval()
 
     # Output path
-    if not os.path.exists(FLAGS.output_path):
-        os.makedirs(FLAGS.output_path)
+    if not os.path.exists(cfg.output.path):
+        os.makedirs(cfg.output.path)
 
     # Use `valid`` set for eval mode if not use `test`
-    split = "test" if FLAGS.mode == "rollout" else "valid"
+    split = "test" if cfg.mode == "rollout" else "valid"
 
     # Load trajectory data.
-    ds = data_loader.get_data_loader_by_trajectories(
-        path=f"{FLAGS.data_path}{split}.npz"
-    )
+    ds = data_loader.get_data_loader_by_trajectories(path=f"{cfg.data.path}{split}.npz")
 
     # Rollout
     with torch.no_grad():
         for i, features in enumerate(ds):
-            nsteps = len(features[0]) - INPUT_SEQUENCE_LENGTH
-            prediction_data = rollout(simulator, features, nsteps, device)
+            nsteps = len(features[0]) - cfg.data.input_sequence_length
+            prediction_data = rollout(simulator, features, nsteps, device, cfg)
             print(f"Rollout for example{i}: loss = {prediction_data['mean_loss']}")
 
             # Save rollout in testing
-            if FLAGS.mode == "rollout":
-                filename = f"{FLAGS.rollout_filename}_{i}.pkl"
-                filename = os.path.join(FLAGS.output_path, filename)
+            if cfg.mode == "rollout":
+                filename = f"{cfg.output.filename}_{i}.pkl"
+                filename = os.path.join(cfg.output.path, filename)
                 with open(filename, "wb") as f:
                     pickle.dump(prediction_data, f)
 
     print(f"Mean loss on rollout prediction: {prediction_data['mean_loss']}")
 
 
-def rollout(simulator: learned_simulator.MeshSimulator, features, nsteps: int, device):
+def rollout(
+    simulator: learned_simulator.MeshSimulator, features, nsteps: int, device, cfg
+):
     node_coords = features[0]  # (timesteps, nnode, ndims)
     node_types = features[1]  # (timesteps, nnode, )
     velocities = features[2]  # (timesteps, nnode, ndims)
     pressures = features[3]  # (timesteps, nnode, )
     cells = features[4]  # # (timesteps, ncells, nnode_per_cell)
 
-    initial_velocities = velocities[:INPUT_SEQUENCE_LENGTH]
-    ground_truth_velocities = velocities[INPUT_SEQUENCE_LENGTH:]
+    initial_velocities = velocities[: cfg.data.input_sequence_length]
+    ground_truth_velocities = velocities[cfg.data.input_sequence_length :]
 
     current_velocities = initial_velocities.squeeze().to(device)
     predictions = []
@@ -159,7 +179,7 @@ def rollout(simulator: learned_simulator.MeshSimulator, features, nsteps: int, d
         )
 
         # Make graph
-        graph = datas_to_graph(current_example, dt=dt, device=device)
+        graph = datas_to_graph(current_example, dt=cfg.data.dt, device=device)
         # Represent graph using edge_index and make edge_feature to be using [relative_distance, norm]
         graph = transformer(graph)
 
@@ -206,22 +226,40 @@ def rollout(simulator: learned_simulator.MeshSimulator, features, nsteps: int, d
     return output_dict
 
 
-def train(simulator):
+def train(simulator, cfg):
     print(f"device = {device}")
 
+    # missing metadata for the dataset
+    # metadata = reading_utils.read_metadata(cfg.data.path, "train")
+    metadata = None
+    writer = setup_tensorboard(cfg, metadata)
     # Initiate training.
-    optimizer = torch.optim.Adam(simulator.parameters(), lr=lr_init)
+    optimizer = torch.optim.Adam(
+        simulator.parameters(), lr=cfg.training.learning_rate.initial
+    )
     step = 0
+    epoch = 0
+
+    valid_loss = None
+    train_loss = 0
+    epoch_valid_loss = None
+
+    train_loss_hist = []
+    valid_loss_hist = []
 
     # Set model and its path to save, and load model.
     # If model_path does not exist create new directory and begin training.
-    model_path = FLAGS.model_path
-    if not os.path.exists(model_path):
-        os.makedirs(model_path)
+    model_path = cfg.model.path
+    if not os.path.exists(cfg.model.path):
+        os.makedirs(cfg.model.path, exist_ok=True)
+
+    # Create TensorBoard log directory
+    if not os.path.exists(cfg.logging.tensorboard_dir):
+        os.makedirs(cfg.logging.tensorboard_dir)
 
     # If model_path does exist and model_file and train_state_file exist continue training.
-    if FLAGS.model_file is not None:
-        if FLAGS.model_file == "latest" and FLAGS.train_state_file == "latest":
+    if cfg.model.file is not None and cfg.training.resume:
+        if cfg.model.file == "latest" and cfg.model.train_state_file == "latest":
             # find the latest model, assumes model and train_state files are in step.
             fnames = glob.glob(f"{model_path}*model*pt")
             max_model_number = 0
@@ -231,26 +269,29 @@ def train(simulator):
                 if model_num > max_model_number:
                     max_model_number = model_num
             # reset names to point to the latest.
-            FLAGS.model_file = f"model-{max_model_number}.pt"
-            FLAGS.train_state_file = f"train_state-{max_model_number}.pt"
+            cfg.model.file = f"model-{max_model_number}.pt"
+            cfg.model.train_state_file = f"train_state-{max_model_number}.pt"
 
-        if os.path.exists(model_path + FLAGS.model_file) and os.path.exists(
-            model_path + FLAGS.train_state_file
+        if os.path.exists(cfg.model.path + cfg.model.file) and os.path.exists(
+            cfg.model.path + cfg.model.train_state_file
         ):
             # load model
-            simulator.load(model_path + FLAGS.model_file)
+            simulator.load(cfg.model.path + cfg.model.file)
 
             # load train state
-            train_state = torch.load(model_path + FLAGS.train_state_file)
+            train_state = torch.load(cfg.model.path + cfg.model.train_state_file)
             # set optimizer state
             optimizer = torch.optim.Adam(simulator.parameters())
             optimizer.load_state_dict(train_state["optimizer_state"])
             optimizer_to(optimizer, device)
             # set global train state
-            step = train_state["global_train_state"].pop("step")
+            step = train_state["global_train_state"]["step"]
+            epoch = train_state["global_train_state"]["epoch"]
+            train_loss_hist = train_state["loss_history"]["train"]
+            valid_loss_hist = train_state["loss_history"]["valid"]
         else:
             raise FileNotFoundError(
-                f"Specified model_file {model_path + FLAGS.model_file} and train_state_file {model_path + FLAGS.train_state_file} not found."
+                f"Specified model_file {cfg.model.path + cfg.model.file} and train_state_file {cfg.model.path + cfg.model.train_state_file} not found."
             )
 
     simulator.train()
@@ -258,90 +299,196 @@ def train(simulator):
 
     # Load data
     ds = data_loader.get_data_loader_by_samples(
-        path=f"{FLAGS.data_path}/{FLAGS.mode}.npz",
-        input_length_sequence=INPUT_SEQUENCE_LENGTH,
-        dt=dt,
-        batch_size=FLAGS.batch_size,
+        path=f"{cfg.data.path}/{cfg.mode}.npz",
+        input_length_sequence=cfg.data.input_sequence_length,
+        dt=cfg.data.dt,
+        batch_size=cfg.data.batch_size,
+    )
+    valid_dl = data_loader.get_data_loader_by_samples(
+        path=f"{cfg.data.path}/valid.npz",
+        input_length_sequence=cfg.data.input_sequence_length,
+        dt=cfg.data.dt,
+        batch_size=cfg.data.batch_size,
     )
 
-    not_reached_nsteps = True
     try:
-        while not_reached_nsteps:
-            for i, graph in enumerate(ds):
-                # Represent graph using edge_index and make edge_feature to be using [relative_distance, norm]
-                graph = transformer(graph.to(device))
+        num_epochs = max(1, (cfg.training.steps + len(ds) - 1) // len(ds))
+        print(f"Total epochs = {num_epochs}")
+        for epoch in tqdm(
+            range(epoch, num_epochs), desc="Training", unit="epoch", disable=False
+        ):
+            epoch_loss = 0.0
+            steps_this_epoch = 0
+            # Create a tqdm progress bar for each epoch
+            with tqdm(
+                # resume from one step after the checkpoint
+                range(step % len(ds) + 1, len(ds)),
+                desc=f"Epoch {epoch}",
+                unit="batch",
+                disable=False,
+            ) as pbar:
+                for i, graph in enumerate(ds):
+                    # Represent graph using edge_index and make edge_feature to be using [relative_distance, norm]
+                    graph = transformer(graph.to(device))
 
-                # Get inputs
-                node_types = graph.x[:, 0]
-                current_velocities = graph.x[:, 1:3]
-                edge_index = graph.edge_index
-                edge_features = graph.edge_attr
-                target_velocities = graph.y
+                    # Get inputs
+                    node_types = graph.x[:, 0]
+                    current_velocities = graph.x[:, 1:3]
+                    edge_index = graph.edge_index
+                    edge_features = graph.edge_attr
+                    target_velocities = graph.y
 
-                # Get velocity noise
-                velocity_noise = get_velocity_noise(
-                    graph, noise_std=noise_std, device=device
-                )
-
-                # Predict dynamics
-                pred_acc, target_acc = simulator.predict_acceleration(
-                    current_velocities=current_velocities,
-                    node_type=node_types,
-                    edge_index=edge_index,
-                    edge_features=edge_features,
-                    target_velocities=target_velocities,
-                    velocity_noise=velocity_noise,
-                )
-
-                # Compute loss
-                mask = torch.logical_or(
-                    node_types == NodeType.NORMAL, node_types == NodeType.OUTFLOW
-                )
-                errors = ((pred_acc - target_acc) ** 2)[
-                    mask
-                ]  # only compute errors if node_types is NORMAL or OUTFLOW
-                loss = torch.mean(errors)
-
-                # Computes the gradient of loss
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-                # Update learning rate
-                lr_new = lr_init * lr_decay_rate ** (step / lr_decay_steps) + 1e-6
-                for param in optimizer.param_groups:
-                    param["lr"] = lr_new
-
-                if step % loss_report_step == 0:
-                    print(
-                        f"Training step: {step}/{FLAGS.ntraining_steps}. Loss: {loss}."
+                    # Get velocity noise
+                    velocity_noise = get_velocity_noise(
+                        graph, noise_std=cfg.data.noise_std, device=device
                     )
 
-                # Save model state
-                if step % FLAGS.nsave_steps == 0:
-                    simulator.save(model_path + "model-" + str(step) + ".pt")
-                    train_state = dict(
-                        optimizer_state=optimizer.state_dict(),
-                        global_train_state={"step": step},
+                    # Predict dynamics
+                    pred_acc, target_acc = simulator.predict_acceleration(
+                        current_velocities=current_velocities,
+                        node_type=node_types,
+                        edge_index=edge_index,
+                        edge_features=edge_features,
+                        target_velocities=target_velocities,
+                        velocity_noise=velocity_noise,
                     )
-                    torch.save(train_state, f"{model_path}train_state-{step}.pt")
 
-                # Complete training
-                if step >= FLAGS.ntraining_steps:
-                    not_reached_nsteps = False
-                    break
+                    # Compute loss
+                    mask = torch.logical_or(
+                        node_types == NodeType.NORMAL, node_types == NodeType.OUTFLOW
+                    )
+                    errors = ((pred_acc - target_acc) ** 2)[
+                        mask
+                    ]  # only compute errors if node_types is NORMAL or OUTFLOW
+                    loss = torch.mean(errors)
 
-                step += 1
+                    # Computes the gradient of loss
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                    # Update learning rate
+                    lr_new = (
+                        cfg.training.learning_rate.initial
+                        * cfg.training.learning_rate.decay
+                        ** (step / cfg.training.learning_rate.decay_steps)
+                        + 1e-6
+                    )
+                    for param in optimizer.param_groups:
+                        param["lr"] = lr_new
+
+                    train_loss = loss.item()
+                    epoch_loss += train_loss
+                    steps_this_epoch += 1
+                    avg_loss = epoch_loss / steps_this_epoch
+                    writer.add_scalar("Loss/train", train_loss, step)
+                    writer.add_scalar("Learning Rate", lr_new, step)
+                    pbar.set_postfix(
+                        loss=f"{train_loss:.2f}",
+                        avg_loss=f"{avg_loss:.2f}",
+                        lr=f"{lr_new:.2e}",
+                    )
+                    pbar.update(1)
+
+                    if (
+                        cfg.training.validation_interval is not None
+                        and step > 0
+                        and step % cfg.training.validation_interval == 0
+                    ):
+
+                        sampled_valid_example = next(iter(valid_dl))
+                        valid_loss = validation(simulator, sampled_valid_example, cfg)
+                        writer.add_scalar("Loss/valid", valid_loss.item(), step)
+
+                    # Save model state
+                    if step % cfg.training.save_steps == 0:
+                        save_model_and_train_state(
+                            simulator,
+                            cfg,
+                            step,
+                            epoch,
+                            optimizer,
+                            train_loss,
+                            valid_loss,
+                            train_loss_hist,
+                            valid_loss_hist,
+                        )
+
+                    step += 1
+                    if step >= cfg.training.steps:
+                        break
+
+            avg_loss = torch.tensor([epoch_loss / steps_this_epoch])
+            train_loss_hist.append((epoch, avg_loss.item()))
+
+            if cfg.training.validation_interval is not None:
+                sampled_valid_example = next(iter(valid_dl))
+                epoch_valid_loss = validation(
+                    simulator,
+                    sampled_valid_example,
+                    cfg,
+                )
+                valid_loss_hist.append((epoch, epoch_valid_loss.item()))
+                writer.add_scalar("Loss/valid_epoch", epoch_valid_loss.item(), epoch)
 
     except KeyboardInterrupt:
         pass
 
+    save_model_and_train_state(
+        simulator,
+        cfg,
+        step,
+        epoch,
+        optimizer,
+        train_loss,
+        valid_loss,
+        train_loss_hist,
+        valid_loss_hist,
+    )
 
-def main(_):
+
+def validation(simulator, graph, cfg):
+
+    graph = transformer(graph.to(device))
+    # Get inputs
+    node_types = graph.x[:, 0]
+    current_velocities = graph.x[:, 1:3]
+    edge_index = graph.edge_index
+    edge_features = graph.edge_attr
+    target_velocities = graph.y
+
+    # Get velocity noise
+    velocity_noise = get_velocity_noise(
+        graph, noise_std=cfg.data.noise_std, device=device
+    )
+    with torch.no_grad():
+        pred_acc, target_acc = simulator.predict_acceleration(
+            current_velocities=current_velocities,
+            node_type=node_types,
+            edge_index=edge_index,
+            edge_features=edge_features,
+            target_velocities=target_velocities,
+            velocity_noise=velocity_noise,
+        )
+
+        # Compute loss
+        mask = torch.logical_or(
+            node_types == NodeType.NORMAL, node_types == NodeType.OUTFLOW
+        )
+        errors = ((pred_acc - target_acc) ** 2)[
+            mask
+        ]  # only compute errors if node_types is NORMAL or OUTFLOW
+        loss = torch.mean(errors)
+
+    return loss
+
+
+@hydra.main(version_base=None, config_path="..", config_name="config_mesh")
+def main(cfg: Config):
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
-        device = torch.device(f"cuda:{int(FLAGS.cuda_device_number)}")
+    if cfg.hardware.cuda_device_number is not None and torch.cuda.is_available():
+        device = torch.device(f"cuda:{int(cfg.hardware.cuda_device_number)}")
 
     # load simulator
     simulator = learned_simulator.MeshSimulator(
@@ -353,15 +500,15 @@ def main(_):
         nmlp_layers=2,
         mlp_hidden_dim=128,
         nnode_types=3,
-        node_type_embedding_size=9,
+        node_type_embedding_size=cfg.data.node_type_embedding_size,
         device=device,
     )
 
-    if FLAGS.mode == "train":
-        train(simulator)
-    elif FLAGS.mode in ["valid", "rollout"]:
-        predict(simulator, device)
+    if cfg.mode == "train":
+        train(simulator, cfg)
+    elif cfg.mode in ["valid", "rollout"]:
+        predict(simulator, device, cfg)
 
 
 if __name__ == "__main__":
-    app.run(main)
+    main()
