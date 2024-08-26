@@ -20,7 +20,7 @@ MeshNet is a scalable surrogate simulator for any mesh-based models like Finite 
 # For particulate domain,
 python3 -m gns.train mode="train" --config-path ./ --config-name config.yaml
 # For mesh-based domain,
-python3 -m meshnet.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --ntraining_steps=100
+python3 -m meshnet.train mode="train" --config-path ./ --config-name config_mesh.yaml
 ```
 
 > Resume training
@@ -31,7 +31,7 @@ To resume training specify `model_file` and `train_state_file`:
 # For particulate domain,
 python3 -m gns.train mode="train" training.resume=True
 # For mesh-based domain,
-python3 -m meshnet.train --data_path="<input-training-data-path>" --model_path="<path-to-load-save-model-file>" --model_file="model.pt" --train_state_file="train_state.pt" --ntraining_steps=100
+python3 -m meshnet.train mode="train" training.resume=True
 ```
 
 > Rollout prediction
@@ -39,7 +39,7 @@ python3 -m meshnet.train --data_path="<input-training-data-path>" --model_path="
 # For particulate domain,
 python3 -m gns.train mode="rollout"
 # For mesh-based domain,
-python3 -m meshnet.train --mode="rollout" --data_path="<input-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" --model_file="model.pt" --train_state_file="train_state.pt"
+python3 -m meshnet.train mode="rollout"
 ```
 
 > Render
