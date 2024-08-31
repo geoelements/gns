@@ -1,4 +1,4 @@
-# Graph Network Simulator (GNS) and MeshNet
+\# Graph Network Simulator (GNS) and MeshNet
 
 [![DOI](https://zenodo.org/badge/427487727.svg)](https://zenodo.org/badge/latestdoi/427487727)
 [![GitHub Actions](https://github.com/geoelements/gns/actions/workflows/train.yml/badge.svg)](https://github.com/geoelements/gns/actions/workflows/train.yml)
@@ -250,6 +250,28 @@ Dockerfile-GPU is supplied to build image with GPU support.
 docker pull ghcr.io/geoelements/gns:gpu
 ```
 
+## Setting up Container Environemnt for TACC
+
+From login node in TACC, go to compute node and load apptainer 
+
+```shell
+idev -m 40 # Detailed instructions at: https://containers-at-tacc.readthedocs.io/en/latest/singularity/01.singularity_basics.html
+module spider apptainer
+module load tacc-apptainer
+```
+
+After cloning the repository and checking out to ``v2'' branch, please pull the docker image
+
+```shell
+apptainer pull docker://ghcr.io/geoelements/gns:gpu
+apptainer shell --nv gns_gpu.sif
+
+```
+
+Download the relevant dataset into a new directory named 'gns-sample' and run the train script like 
+```shell
+python3 -m gns.train mode="train" --config-path ./ --config-name config.yaml
+```
 
 ## GNS training in parallel
 GNS can be trained in parallel on multiple nodes with multiple GPUs.
