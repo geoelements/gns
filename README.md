@@ -250,6 +250,40 @@ Dockerfile-GPU is supplied to build image with GPU support.
 docker pull ghcr.io/geoelements/gns:gpu
 ```
 
+## Setting up Container Environemnt for TACC
+
+From the login node in TACC, swtich to the compute node. In order to do that, from [TACC Portal](https://portal.tacc.utexas.edu/), determine names for the gpu queues with at least one idle node by clicking on any of the systems ('Stampede6', 'Frontera' etc.) among your active allocations. To swtich to a compute node in gpu queue in Frontera, for example, the following command can be executed, 
+
+```shell
+idev -p rtx -N 1 -n 1 -t 1:00:00
+```
+Similarly, for Lonestar6, one can run 
+
+```shell
+idev -p gpu-a100-dev -N 1 -n 1 -t 2:00:00
+```
+
+After switching to compute node, please load cuda and apptainer. 
+
+```shell
+module load cuda/11.3 cudnn nccl
+module load tacc-apptainer # Detailed instructions at: https://containers-at-tacc.readthedocs.io/en/latest/singularity/01.singularity_basics.html
+```
+Please note that you may need to load python module depedending on the system. For specific instructions, please follow guidelines in corresponding user manual (e.g. [Lonestar6 user manual](https://docs.tacc.utexas.edu/hpc/lonestar6/) )
+
+
+After cloning the repository and checking out to ``v2'' branch, please pull the docker image
+
+```shell
+apptainer pull docker://ghcr.io/geoelements/gns:gpu
+apptainer shell --nv gns_gpu.sif
+
+```
+
+Download the relevant dataset into a new directory named 'gns-sample' and run the train script like 
+```shell
+python3 -m gns.train mode="train" --config-path ./ --config-name config.yaml
+```
 
 ## GNS training in parallel
 GNS can be trained in parallel on multiple nodes with multiple GPUs.
