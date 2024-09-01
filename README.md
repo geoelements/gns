@@ -1,4 +1,4 @@
-\# Graph Network Simulator (GNS) and MeshNet
+# Graph Network Simulator (GNS) and MeshNet
 
 [![DOI](https://zenodo.org/badge/427487727.svg)](https://zenodo.org/badge/latestdoi/427487727)
 [![GitHub Actions](https://github.com/geoelements/gns/actions/workflows/train.yml/badge.svg)](https://github.com/geoelements/gns/actions/workflows/train.yml)
@@ -252,13 +252,25 @@ docker pull ghcr.io/geoelements/gns:gpu
 
 ## Setting up Container Environemnt for TACC
 
-From login node in TACC, go to compute node and load apptainer 
+From the login node in TACC, swtich to the compute node. In order to do that, from [TACC Porta](https://portal.tacc.utexas.edu/), determine names for the gpu queues with at least one idle node by clicking on any of the systems ('Stampede6', 'Frontera' etc.) among your active allocations. To swtich to a compute node in gpu queue in Frontera, for example,the following command can be executed, 
 
 ```shell
-idev -m 40 # Detailed instructions at: https://containers-at-tacc.readthedocs.io/en/latest/singularity/01.singularity_basics.html
-module spider apptainer
-module load tacc-apptainer
+idev -p rtx -N 1 -n 1 -t 1:00:00
 ```
+Similarly, for Lonestar6, one can run 
+
+```shell
+idev -p gpu-a100-dev -N 1 -n 1 -t 2:00:00
+```
+
+After switching to compute node, please load cuda and apptainer. 
+
+```shell
+module load cuda/11.3 cudnn nccl
+module load tacc-apptainer # Detailed instructions at: https://containers-at-tacc.readthedocs.io/en/latest/singularity/01.singularity_basics.html
+```
+Please note that you may need to load python module depedending on the system. For specific instructions, please follow guidelines in corresponding user manual (e.g. [Lonestar6 user manual](https://docs.tacc.utexas.edu/hpc/lonestar6/) )
+
 
 After cloning the repository and checking out to ``v2'' branch, please pull the docker image
 
