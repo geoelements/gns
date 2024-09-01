@@ -252,7 +252,7 @@ docker pull ghcr.io/geoelements/gns:gpu
 
 ## Setting up Container Environemnt for TACC
 
-From the login node in TACC, swtich to the compute node. In order to do that, from [TACC Porta](https://portal.tacc.utexas.edu/), determine names for the gpu queues with at least one idle node by clicking on any of the systems ('Stampede6', 'Frontera' etc.) among your active allocations. To swtich to a compute node in gpu queue in Frontera, for example,the following command can be executed, 
+From the login node in TACC, swtich to the compute node. In order to do that, from [TACC Portal](https://portal.tacc.utexas.edu/), determine names for the gpu queues with at least one idle node by clicking on any of the systems ('Stampede6', 'Frontera' etc.) among your active allocations. To swtich to a compute node in gpu queue in Frontera, for example, the following command can be executed, 
 
 ```shell
 idev -p rtx -N 1 -n 1 -t 1:00:00
