@@ -21,6 +21,7 @@ from gns import noise_utils
 from gns import reading_utils
 from gns import particle_data_loader as pdl
 from gns import distribute
+from gns import render_rollout
 from gns.args import Config
 
 Stats = collections.namedtuple("Stats", ["mean", "std"])
@@ -200,9 +201,24 @@ def predict(device: str, cfg: DictConfig):
                 example_rollout["metadata"] = metadata
                 example_rollout["loss"] = loss.mean()
                 filename = f"{cfg.output.filename}_ex{example_i}.pkl"
+                filename_render = f"{cfg.output.filename}_ex{example_i}"
                 filename = os.path.join(cfg.output.path, filename)
                 with open(filename, "wb") as f:
                     pickle.dump(example_rollout, f)
+            if cfg.rendering.render:
+                render = render_rollout.Render(
+                    input_dir=cfg.output.path, input_name=filename_render
+                )
+                if cfg.rendering.mode == "gif":
+                    render.render_gif_animation(
+                        point_size=1,
+                        timestep_stride=cfg.rendering.step_stride,
+                        vertical_camera_angle=20,
+                        viewpoint_rotation=0.3,
+                        change_yz=cfg.rendering.change_yz,
+                    )
+                elif cfg.rendering.mode == "vtk":
+                    render.write_vtk()
 
     print(
         "Mean loss on rollout prediction: {}".format(torch.mean(torch.cat(eval_loss)))

@@ -49,3 +49,10 @@ hardware:
 # Logging configuration
 logging:
   tensorboard_dir: logs/
+
+# Rendering configuration
+rendering:
+  render: True
+  mode: gif
+  step_stride: 3
+  change_yz: False
