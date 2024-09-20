@@ -115,7 +115,7 @@ def predict(device: str, cfg: DictConfig):
 
     """
     # Read metadata
-    metadata = reading_utils.read_metadata(cfg.data.path, "rollout")
+    metadata = reading_utils.read_metadata(cfg.data.path, "rollout", cfg.data.meta_data)
     simulator = _get_simulator(
         metadata,
         cfg.data.num_particle_types,
@@ -377,7 +377,7 @@ def initialize_training(cfg, rank, world_size, device, use_dist):
       device: torch device type.
       use_dist: use torch.distribute
     """
-    metadata = reading_utils.read_metadata(cfg.data.path, "train")
+    metadata = reading_utils.read_metadata(cfg.data.path, "train", cfg.data.meta_data)
     simulator, optimizer = setup_simulator_and_optimizer(
         cfg, metadata, rank, world_size, device, use_dist
     )
