@@ -53,9 +53,6 @@ logging:
 # Rendering configuration
 rendering:
   render: True
-  format: gif
-
-# gif configuration
-  gif:
-    step_stride: 3
-    change_yz: False
+  mode: gif
+  step_stride: 3
+  change_yz: False
