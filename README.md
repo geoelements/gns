@@ -34,13 +34,14 @@ python3 -m gns.train mode="train" training.resume=True
 python3 -m meshnet.train mode="train" training.resume=True
 ```
 
-> Rollout prediction
+> Rollout prediction and render in gif format
 ```shell
 # For particulate domain,
 python3 -m gns.train mode="rollout"
 # For mesh-based domain,
 python3 -m meshnet.train mode="rollout"
 ```
+To choose not to render after rollout prediction, add option `rendering.render=False`
 
 > Render
 ```shell
@@ -118,6 +119,16 @@ hardware:
 # Logging configuration
 logging:
   tensorboard_dir: logs/
+
+# Rendering configuration
+rendering:
+  render: True
+  format: gif
+
+# gif configuration
+  gif:
+    step_stride: 3
+    change_yz: False
 ```
 
 </details>
@@ -180,7 +191,6 @@ The total number of training steps to execute before stopping.
 **nsave_steps (Integer)**
 
 Interval at which the model and training state are saved.
-
 </details>
 
 ## Datasets

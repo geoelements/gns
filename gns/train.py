@@ -202,28 +202,30 @@ def predict(device: str, cfg: DictConfig):
                 example_rollout["loss"] = loss.mean()
                 filename = f"{cfg.output.filename}_ex{example_i}.pkl"
                 filename_render = f"{cfg.output.filename}_ex{example_i}"
-                filename = os.path.join(cfg.output.path, filename)
+                filename = os.path.join(cfg.output.path, filename_render)
                 with open(filename, "wb") as f:
                     pickle.dump(example_rollout, f)
             if cfg.rendering.render:
-                render = render_rollout.Render(
-                    input_dir=cfg.output.path, input_name=filename_render
-                )
-                if cfg.rendering.mode == "gif":
-                    render.render_gif_animation(
-                        point_size=1,
-                        timestep_stride=cfg.rendering.step_stride,
-                        vertical_camera_angle=20,
-                        viewpoint_rotation=0.3,
-                        change_yz=cfg.rendering.change_yz,
-                    )
-                elif cfg.rendering.mode == "vtk":
-                    render.write_vtk()
+                rendering(cfg.output.path, filename_render)
 
     print(
         "Mean loss on rollout prediction: {}".format(torch.mean(torch.cat(eval_loss)))
     )
 
+def rendering(input_dir, input_name, cfg: DictConfig):
+    render = render_rollout.Render(input_dir, input_name)
+
+    if cfg.rendering.format == "gif":
+        render.render_gif_animation(
+            point_size=1,
+                        timestep_stride=cfg.gif.step_stride,
+                        vertical_camera_angle=20,
+                        viewpoint_rotation=0.3,
+                        change_yz=cfg.gif.change_yz,
+
+        )
+    elif cfg.rendering.format == "vtk":
+                    render.write_vtk()
 
 def optimizer_to(optim, device):
     for param in optim.state.values():
