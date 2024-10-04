@@ -769,10 +769,13 @@ def _get_simulator(
 
 
 def validation(simulator, example, n_features, cfg, rank, device_id):
-
-    position, particle_type, material_property, n_particles_per_example, labels = (
-        prepare_data(example, device_id)
-    )
+    (
+        position,
+        particle_type,
+        material_property,
+        n_particles_per_example,
+        labels,
+    ) = prepare_data(example, device_id)
 
     # Sample the noise to add to the inputs.
     sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(

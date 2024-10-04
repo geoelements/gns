@@ -395,7 +395,6 @@ def train(simulator, cfg):
                         and step > 0
                         and step % cfg.training.validation_interval == 0
                     ):
-
                         sampled_valid_example = next(iter(valid_dl))
                         valid_loss = validation(simulator, sampled_valid_example, cfg)
                         writer.add_scalar("Loss/valid", valid_loss.item(), step)
@@ -448,7 +447,6 @@ def train(simulator, cfg):
 
 
 def validation(simulator, graph, cfg):
-
     graph = transformer(graph.to(device))
     # Get inputs
     node_types = graph.x[:, 0]

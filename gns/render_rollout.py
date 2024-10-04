@@ -277,9 +277,12 @@ class Render:
 
                     # Create a color field based on material property and particle type
                     color_field = np.copy(material_property)
-                    static_particle_value = np.max(
-                        material_property) + 1  # Use a value outside the material property range
-                    color_field[particle_type == 3] = static_particle_value  # Assumes static particle type = 3
+                    static_particle_value = (
+                        np.max(material_property) + 1
+                    )  # Use a value outside the material property range
+                    color_field[
+                        particle_type == 3
+                    ] = static_particle_value  # Assumes static particle type = 3
                     data["color"] = color_field
                 else:
                     # If no material property, use particle type for color
@@ -306,8 +309,10 @@ class Render:
 
                 gridToVTK(
                     f"{path}/boundary{i}",
-                    x, y, z,
-                    cellData={"boundary": np.ones((1, 1, 1))}
+                    x,
+                    y,
+                    z,
+                    cellData={"boundary": np.ones((1, 1, 1))},
                 )
 
         print(f"vtk saved to: {self.output_dir}{self.output_name}...")
