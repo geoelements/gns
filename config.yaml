@@ -54,5 +54,9 @@ logging:
 rendering:
   render: True
   mode: gif
-  step_stride: 3
-  change_yz: False
+  
+  gif:
+    step_stride: 3
+    vertical_camera_angle: 20
+    viewpoint_rotation: 0.3
+    change_yz: False

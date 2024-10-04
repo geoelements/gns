@@ -215,14 +215,13 @@ def predict(device: str, cfg: DictConfig):
 def rendering(input_dir, input_name, cfg: DictConfig):
     render = render_rollout.Render(input_dir, input_name)
 
-    if cfg.rendering.format == "gif":
+    if cfg.rendering.mode == "gif":
         render.render_gif_animation(
             point_size=1,
-                        timestep_stride=cfg.gif.step_stride,
-                        vertical_camera_angle=20,
-                        viewpoint_rotation=0.3,
-                        change_yz=cfg.gif.change_yz,
-
+                        timestep_stride=cfg.rendering.gif.step_stride,
+                        vertical_camera_angle=cfg.rendering.gif.vertical_camera_angle,
+                        viewpoint_rotation=cfg.rendering.gif.veiwpoint_rotation,
+                        change_yz=cfg.rendering.gif.change_yz,
         )
     elif cfg.rendering.format == "vtk":
                     render.write_vtk()
