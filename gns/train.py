@@ -205,8 +205,8 @@ def predict(device: str, cfg: DictConfig):
                 filename = os.path.join(cfg.output.path, filename_render)
                 with open(filename, "wb") as f:
                     pickle.dump(example_rollout, f)
-            if cfg.rendering.render:
-                rendering(cfg.output.path, filename_render)
+            if cfg.rendering.mode:
+                rendering(cfg.output.path, filename_render, cfg)
 
     print(
         "Mean loss on rollout prediction: {}".format(torch.mean(torch.cat(eval_loss)))
@@ -220,10 +220,10 @@ def rendering(input_dir, input_name, cfg: DictConfig):
             point_size=1,
                         timestep_stride=cfg.rendering.gif.step_stride,
                         vertical_camera_angle=cfg.rendering.gif.vertical_camera_angle,
-                        viewpoint_rotation=cfg.rendering.gif.veiwpoint_rotation,
+                        viewpoint_rotation=cfg.rendering.gif.viewpoint_rotation,
                         change_yz=cfg.rendering.gif.change_yz,
         )
-    elif cfg.rendering.format == "vtk":
+    elif cfg.rendering.mode == "vtk":
                     render.write_vtk()
 
 def optimizer_to(optim, device):
