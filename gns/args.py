@@ -61,7 +61,7 @@ class GifConfig:
 
 @dataclass
 class RenderingConfig:
-    mode: Optional[str] = None
+    mode: Optional[str] = field(default='gif')
     gif: GifConfig = field(default_factory=GifConfig)
 
 @dataclass
