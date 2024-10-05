@@ -52,7 +52,6 @@ logging:
 
 # Rendering configuration
 rendering:
-  render: True
   mode: gif
   
   gif:

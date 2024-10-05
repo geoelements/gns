@@ -34,14 +34,18 @@ python3 -m gns.train mode="train" training.resume=True
 python3 -m meshnet.train mode="train" training.resume=True
 ```
 
-> Rollout prediction and render in gif format
+> Rollout prediction and render
 ```shell
 # For particulate domain,
 python3 -m gns.train mode="rollout"
 # For mesh-based domain,
 python3 -m meshnet.train mode="rollout"
 ```
-To choose not to render after rollout prediction, add option `rendering.render=False`
+To choose not to render after rollout prediction, add option `rendering.mode=null`. 
+
+By default the renderer writes `.gif` file. 
+
+In particulate domain, the renderer also writes `.vtu` files to visualize in ParaView.
 
 > Render
 ```shell
@@ -50,8 +54,6 @@ python3 -m gns.render_rollout --output_mode="gif" --rollout_dir="<path-containin
 # For mesh-based domain,
 python3 -m gns.render --rollout_dir="<path-containing-rollout-file>" --rollout_name="<name-of-rollout-file>"
 ```
-
-In particulate domain, the renderer also writes `.vtu` files to visualize in ParaView.
 
 ![Sand rollout](docs/img/rollout_0.gif)
 > GNS prediction of Sand rollout after training for 2 million steps.
@@ -122,15 +124,13 @@ logging:
 
 # Rendering configuration
 rendering:
-  render: True
-  format: gif
-
-# gif configuration
+  mode: gif
+  
   gif:
     step_stride: 3
+    vertical_camera_angle: 20
+    viewpoint_rotation: 0.3
     change_yz: False
-```
-
 </details>
 
 
