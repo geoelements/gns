@@ -4,18 +4,26 @@ import pickle
 import os
 import tempfile
 import shutil
+import glob
 import pyvista as pv
+import logging
 from gns.train import rendering
 from omegaconf import DictConfig
+from typing import Tuple
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 @pytest.fixture
-def cfg_vtk():
+def cfg_vtk() -> DictConfig:
     """
     Fixture for VTK configuration.
 
     Returns:
         DictConfig: Configuration dictionary for VTK rendering mode.
     """
+    logger.info("Setting up VTK configuration.")
     return DictConfig({
         'rendering': {
             'mode': 'vtk'
@@ -23,64 +31,78 @@ def cfg_vtk():
     })
 
 @pytest.fixture
-def temp_dir():
-    """
-    Fixture for creating and cleaning up a temporary directory.
-
-    Yields:
-        str: Path to the temporary directory.
-    """
-    directory = tempfile.mkdtemp()
-    yield directory
-    shutil.rmtree(directory)
-
-@pytest.fixture
-def dummy_pkl_data(temp_dir):
+def dummy_pkl_data() -> dict:
     """
     Fixture for generating dummy pickle data for testing.
 
-    Args:
-        temp_dir (str): Path to the temporary directory.
-
     Returns:
-        tuple: Path to the temporary directory and the pickle file name.
+        Dict: A dictionary containing dummy rollout data.
     """
-    # Define parameters for simulation
+    logger.info("Generating dummy pickle data.")
     n_timesteps = 2
     n_particles = 3
     dim = 2
     n_init_pos = 2
 
-    # Generate random predictions and ground truth positions
-    predictions = np.random.rand(n_timesteps, n_particles, dim)
-    ground_truth_positions = np.random.randn(n_timesteps, n_particles, dim)
-    loss = (predictions - ground_truth_positions)**2
+    try:
+        # Generate random predictions and ground truth positions
+        predictions = np.random.rand(n_timesteps, n_particles, dim)
+        ground_truth_positions = np.random.randn(n_timesteps, n_particles, dim)
+        loss = (predictions - ground_truth_positions)**2
 
-    # Rollout dictionary to store all relevant information
-    dummy_rollout = {
-        "initial_positions": np.random.rand(n_init_pos, n_particles, dim),
-        "predicted_rollout": predictions,
-        "ground_truth_rollout": ground_truth_positions,
-        "particle_types": np.full(n_particles, 5)
-    }
+        # Rollout dictionary to store all relevant information
+        dummy_rollout = {
+            "initial_positions": np.random.rand(n_init_pos, n_particles, dim),
+            "predicted_rollout": predictions,
+            "ground_truth_rollout": ground_truth_positions,
+            "particle_types": np.full(n_particles, 5),
+            "metadata": {
+                "bounds": [[0.0, 1.0], [0.0, 1.0]]
+            },
+            "loss": loss.mean()
+        }
+        logger.info("Dummy pickle data generated successfully.")
 
-    # Metadata for the simulation
-    metadata = {
-        "bounds": [[0.0, 1.0], [0.0, 1.0]]
-    }
+    except Exception as e:
+        logger.error(f"Failed to generate dummy pickle data: {e}")
+        raise
 
-    dummy_rollout['metadata'] = metadata
-    dummy_rollout['loss'] = loss.mean()
-    pkl_file_name = "test_input_file.pkl"
-    pkl_file_path = os.path.join(temp_dir, pkl_file_name)
-    with open(pkl_file_path, "wb") as f:
-        pickle.dump(dummy_rollout, f)
-    temp_dir = temp_dir + '/'
-    pkl_file_name = "test_input_file"
+    return dummy_rollout
 
-    return temp_dir, pkl_file_name
+@pytest.fixture
+def temp_dir_with_file(dummy_pkl_data: dict) -> Tuple[str, str]:
+    """
+    Fixture for generating a temporary directory with dummy pickle data for testing.
 
-def n_files(dir, extension):
+    Returns:
+        Tuple[str, str]: Path to the temporary directory and the pickle file name.
+    """
+    temp_dir = tempfile.mkdtemp()
+    logger.info(f"Created temporary directory: {temp_dir}")
+
+    try:
+        with tempfile.NamedTemporaryFile(dir=temp_dir, suffix='.pkl', delete=False) as temp_file:
+            pkl_file_path = temp_file.name
+
+            with open(pkl_file_path, 'wb') as f:
+                pickle.dump(dummy_pkl_data, f)
+            
+            # get the base file name without any extension
+            file_name = os.path.splitext(os.path.basename(pkl_file_path))[0]
+            logger.info(f"created temporary '.pkl' file: {file_name}")
+            temp_dir += '/'
+            
+            yield temp_dir, file_name
+            
+    except Exception as e:
+            logger.error(f"Failed to create a Temporary file for the input rollout data: {e}")
+
+    finally:
+        shutil.rmtree(temp_dir)
+
+
+
+def n_files(directory: str, extension: str) -> int:
     """
     Count the number of files with a specific extension in a directory.
 
@@ -91,100 +113,174 @@ def n_files(dir, extension):
     Returns:
         int: Number of files with the specified extension.
     """
-    files = os.listdir(dir)
-    each_file = []
+    try:
+        pattern = os.path.join(directory, f'*.{extension}')
+        file_count = len(glob.glob(pattern))
+        logger.info(f"Counted {file_count} files with extension '{extension}' in {directory}.")
+        return file_count
+    except Exception as e:
+        logger.error(f"Error counting files in {directory} with extension '{extension}': {e}")
+        return 0
 
-    for file in files:
-        if file.endswith(extension):
-            each_file.append(file)
+def verify_vtk_files(rollout_data: dict, label: str, temp_dir: str) -> None:
+    """
+    Verify the integrity of VTK files against expected data.
 
-    return len(each_file)
+    This function checks VTK files (VTU and VTR) for specific properties, ensuring that the 
+    displacement, particle types, color maps, and bounds match the expected values in the 
+    provided rollout data.
 
-def test_rendering_vtk(dummy_pkl_data, cfg_vtk):
+    Args:
+        rollout_data (dict): A dictionary containing 
+            - 'inital positions'
+            - 'predicted_rollout'
+            - 'ground_truth_rollout'
+            - 'particle_types'
+            - 'metadata'
+        label (str): The label for the specific rollout data to verify against.
+        temp_dir (str): The temporary directory where the VTK files are stored.
+
+    Raises:
+        AssertionError: If any of the checks on displacement, particle types, color maps, 
+        or bounds fail.
+        Exception: If there is an error reading or processing the VTK files.
+    """
+    logger.info(f"Verifying VTK files for label: {label}.")
+    VTU_PREFIX = "points"
+    VTR_PREFIX = "boundary"
+    VTU_EXTENSION = "vtu"
+    VTR_EXTENSION = "vtr"
+
+    positions = np.concatenate(
+        [rollout_data["initial_positions"], rollout_data[label]],
+        axis=0,
+    )
+
+    for time_step in range(positions.shape[0]):
+        try:
+            vtu_path = os.path.join(temp_dir, f"{VTU_PREFIX}{time_step}.{VTU_EXTENSION}")
+            logger.info(f"Reading VTU file: {vtu_path}")
+            vtu_object = pv.read(vtu_path)
+
+            displacement = vtu_object['displacement']
+            particle_type = vtu_object['particle_type']
+            color_map = vtu_object['color']
+
+            assert np.all(displacement == np.linalg.norm(positions[0] - positions[time_step], axis=1)), (
+                f"Displacement mismatch for timestep {time_step}: "
+                f"expected {np.linalg.norm(positions[0] - positions[time_step], axis=1)}, "
+                f"got {displacement}"
+            )
+            assert np.all(particle_type == rollout_data['particle_types']), (
+                f"Particle type mismatch for timestep {time_step}: "
+                f"expected {rollout_data['particle_types']}, got {particle_type}"
+            )
+            assert np.all(color_map == rollout_data['particle_types']), (
+                f"Color map mismatch for timestep {time_step}: "
+                f"expected {rollout_data['particle_types']}, got {color_map}"
+            )
+
+        except AssertionError as e:
+            logger.error(f"Assertion failed while verifying {VTU_PREFIX}{time_step}.{VTU_EXTENSION}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error reading {VTU_PREFIX}{time_step}.{VTU_EXTENSION}: {e}")
+            raise
+
+        try:
+            vtr_path = os.path.join(temp_dir, f"{VTR_PREFIX}{time_step}.{VTR_EXTENSION}")
+            logger.info(f"Reading VTR file: {vtr_path}")
+            vtr_object = pv.read(vtr_path)
+
+            bounds = vtr_object.bounds
+            xmin, xmax, ymin, ymax, zmin, zmax = bounds
+
+            assert xmin == rollout_data['metadata']['bounds'][0][0], (
+                f"Xmin mismatch for timestep {time_step}: "
+                f"expected {rollout_data['metadata']['bounds'][0][0]}, got {xmin}"
+            )
+            assert xmax == rollout_data['metadata']['bounds'][0][1], (
+                f"Xmax mismatch for timestep {time_step}: "
+                f"expected {rollout_data['metadata']['bounds'][0][1]}, got {xmax}"
+            )
+            assert ymin == rollout_data['metadata']['bounds'][1][0], (
+                f"Ymin mismatch for timestep {time_step}: "
+                f"expected {rollout_data['metadata']['bounds'][1][0]}, got {ymin}"
+            )
+            assert ymax == rollout_data['metadata']['bounds'][1][1], (
+                f"Ymax mismatch for timestep {time_step}: "
+                f"expected {rollout_data['metadata']['bounds'][1][1]}, got {ymax}"
+            )
+
+        except AssertionError as e:
+            logger.error(f"Assertion failed while verifying {VTR_PREFIX}{time_step}.{VTR_EXTENSION}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error reading {VTR_PREFIX}{time_step}.{VTR_EXTENSION}: {e}")
+            raise
+
+    logger.info("VTK file verification complete.")
+
+def test_rendering_vtk( temp_dir_with_file: Tuple[str, str], cfg_vtk: DictConfig) -> None:
     """
     Test the VTK rendering function.
 
     Args:
-        dummy_pkl_data (tuple): Tuple containing the path to the temporary directory and the pickle file name.
+        temp_dir_with_file (Tuple[str, str]): Tuple containing the path to the temporary directory and the pickle file name.
         cfg_vtk (DictConfig): Configuration dictionary for VTK rendering mode.
     """
-    input_dir, input_file = dummy_pkl_data
+    input_dir, input_file = temp_dir_with_file
+
+    logger.info(f"Starting rendering test: {input_file}")
+
+    try:
+        rendering(input_dir, input_file, cfg_vtk)
+    except Exception as e:
+        logger.error("Failed to render with dummy rollout data")
+        raise
     
-    rendering(input_dir, input_file, cfg_vtk)
+    try:
+        # Define paths for the generated VTK files
+        VTK_GNS_SUFFIX = "_vtk-GNS"
+        VTK_REALITY_SUFFIX = "_vtk-Reality"
 
-    # Define paths for the generated VTK files
-    vtk_path_gns = os.path.join(input_dir, f"{input_file}_vtk-GNS")
-    vtk_path_reality = os.path.join(input_dir, f"{input_file}_vtk-Reality")
+        vtk_path_gns = os.path.join(input_dir, f"{input_file}{VTK_GNS_SUFFIX}")
+        vtk_path_reality = os.path.join(input_dir, f"{input_file}{VTK_REALITY_SUFFIX}")
 
-    with open(f"{input_dir}{input_file}.pkl", "rb") as file:
-        rollout = pickle.load(file)
+        logger.info("Loading rollout data from pickle file.")
+        with open(os.path.join(input_dir, f"{input_file}.pkl"), "rb") as file:
+            rollout = pickle.load(file)
 
-    # Concatenate initial positions and rollout positions
-    positions_gns = np.concatenate(
-        [rollout["initial_positions"], rollout["predicted_rollout"]],
-        axis=0,
-    )
-    positions_reality = np.concatenate(
-        [rollout["initial_positions"], rollout["ground_truth_rollout"]],
-        axis=0,
-    )
-    
-    # Count the number of .vtu and .vtr files in the VTK directories
-    n_vtu_files_gns = n_files(vtk_path_gns, 'vtu')
-    n_vtu_files_reality = n_files(vtk_path_reality, 'vtu')
-    n_vtr_files_gns = n_files(vtk_path_gns, 'vtr')
-    n_vtr_files_reality = n_files(vtk_path_reality, 'vtr')
+        # Count the number of .vtu and .vtr files in the VTK directories
+        n_vtu_files_gns = n_files(vtk_path_gns, 'vtu')
+        n_vtu_files_reality = n_files(vtk_path_reality, 'vtu')
+        n_vtr_files_gns = n_files(vtk_path_gns, 'vtr')
+        n_vtr_files_reality = n_files(vtk_path_reality, 'vtr')
 
-    # Assert that the number of .vtu and .vtr files matches the expected count
-    assert n_vtu_files_gns == (positions_gns.shape[0])
-    assert n_vtu_files_reality == (positions_reality.shape[0])
-    assert n_vtr_files_gns == (positions_gns.shape[0])
-    assert n_vtr_files_reality == (positions_reality.shape[0])
+        expected_n_files = rollout["initial_positions"].shape[0] + rollout["predicted_rollout"].shape[0]
+        logger.info(f"Expected number of files: {expected_n_files}.")
 
-    # Verify the contents of the generated VTK files at each time step for GNS
-    for time_step in range(positions_gns.shape[0]):
-        vtu = os.path.join(vtk_path_gns, f"points{time_step}.vtu")
-        vtu_object = pv.read(vtu)
-        displacement = vtu_object['displacement']
-        particle_type = vtu_object['particle_type']
-        color_map = vtu_object['color']
+        # Assert that the number of .vtu and .vtr files matches the expected count
+        assert n_vtu_files_gns == expected_n_files, (
+            f"Expected {expected_n_files} VTU files in GNS path, got {n_vtu_files_gns}"
+        )
+        assert n_vtu_files_reality == expected_n_files, (
+            f"Expected {expected_n_files} VTU files in Reality path, got {n_vtu_files_reality}"
+        )
+        assert n_vtr_files_gns == expected_n_files, (
+            f"Expected {expected_n_files} VTR files in GNS path, got {n_vtr_files_gns}"
+        )
+        assert n_vtr_files_reality == expected_n_files, (
+            f"Expected {expected_n_files} VTR files in Reality path, got {n_vtr_files_reality}"
+        )
 
-        assert np.all(displacement == np.linalg.norm(positions_gns[0] - positions_gns[time_step], axis=1))
-        assert np.all(particle_type == rollout['particle_types'])
-        assert np.all(color_map == rollout['particle_types'])
+        logger.info("Verifying VTK files for predicted rollout.")
+        verify_vtk_files(rollout, "predicted_rollout", vtk_path_gns)
+        logger.info("Verifying VTK files for ground truth rollout.")
+        verify_vtk_files(rollout, "ground_truth_rollout", vtk_path_reality)
 
-        vtr = os.path.join(vtk_path_gns, f"boundary{time_step}.vtr")
-        vtr_object = pv.read(vtr)
+        logger.info("Rendering test completed successfully.")
 
-        bounds = vtr_object.bounds
-
-        xmin, xmax, ymin, ymax, zmin, zmax = bounds
-
-        assert xmin == rollout['metadata']['bounds'][0][0]
-        assert xmax == rollout['metadata']['bounds'][0][1]
-        assert ymin == rollout['metadata']['bounds'][1][0]
-        assert ymax == rollout['metadata']['bounds'][1][1]
-
-    # Verify the contents of the generated VTK files at each time step for reality
-    for time_step in range(positions_reality.shape[0]):
-        vtu = os.path.join(vtk_path_reality, f"points{time_step}.vtu")
-        vtu_object = pv.read(vtu)
-        displacement = vtu_object['displacement']
-        particle_type = vtu_object['particle_type']
-        color_map = vtu_object['color']
-
-        assert np.all(displacement == np.linalg.norm(positions_reality[0] - positions_reality[time_step], axis=1))
-        assert np.all(particle_type == rollout['particle_types'])
-        assert np.all(color_map == rollout['particle_types'])
-
-        vtr = os.path.join(vtk_path_reality, f"boundary{time_step}.vtr")
-        vtr_object = pv.read(vtr)
-
-        bounds = vtr_object.bounds
-
-        xmin, xmax, ymin, ymax, zmin, zmax = bounds
-
-        assert xmin == rollout['metadata']['bounds'][0][0]
-        assert xmax == rollout['metadata']['bounds'][0][1]
-        assert ymin == rollout['metadata']['bounds'][1][0]
-        assert ymax == rollout['metadata']['bounds'][1][1]
+    except Exception as e:
+        logger.error(f"Rendering test failed: {e}")
+        
