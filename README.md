@@ -41,11 +41,12 @@ python3 -m gns.train mode="rollout"
 # For mesh-based domain,
 python3 -m meshnet.train mode="rollout"
 ```
-To choose not to render after rollout prediction, add option `rendering.mode=null`. 
-
-By default the renderer writes `.gif` file. 
-
-In particulate domain, the renderer also writes `.vtu` files to visualize in ParaView.
+### Rendering Options
+Set rendering mode with `rendering.mode=<option>`
+`null`: Disables rendering
+`gif`: Creates a .gif file (default)
+`vtk`: Writes .vtu files for ParaView visualization
+Example: `rendering.mode=null` to disable rendering
 
 > Render
 ```shell
