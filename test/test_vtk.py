@@ -10,6 +10,7 @@ import logging
 from gns.train import rendering
 from omegaconf import DictConfig
 from typing import Tuple
+from utils.count_n_files import n_files
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -112,28 +113,6 @@ def temp_dir_with_file(dummy_pkl_data: dict) -> Tuple[str, str]:
         shutil.rmtree(temp_dir)
 
 
-def n_files(directory: str, extension: str) -> int:
-    """
-    Count the number of files with a specific extension in a directory.
-
-    Args:
-        dir (str): Directory path.
-        extension (str): File extension to count.
-
-    Returns:
-        int: Number of files with the specified extension.
-    """
-    try:
-        pattern = os.path.join(directory, f"*.{extension}")
-        file_count = len(glob.glob(pattern))
-        return file_count
-    except Exception as e:
-        logger.error(
-            f"Error counting files in {directory} with extension '{extension}': {e}"
-        )
-        return 0
-
-
 def verify_vtk_files(rollout_data: dict, label: str, temp_dir: str) -> None:
     """
     Verify the integrity of VTK files against expected data.
@@ -157,7 +136,6 @@ def verify_vtk_files(rollout_data: dict, label: str, temp_dir: str) -> None:
         or bounds fail.
         Exception: If there is an error reading or processing the VTK files.
     """
-    logger.info(f"Verifying VTK files for label: {label}.")
     VTU_PREFIX = "points"
     VTR_PREFIX = "boundary"
     VTU_EXTENSION = "vtu"
