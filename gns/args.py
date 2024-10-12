@@ -56,7 +56,7 @@ class LoggingConfig:
 class GifConfig:
     step_stride: int = 3
     vertical_camera_angle: int = 20
-    viewpoint_rotation: int = 0.3
+    viewpoint_rotation: float = 0.3
     change_yz: bool = False
 
 @dataclass
