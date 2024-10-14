@@ -280,9 +280,9 @@ class Render:
                     static_particle_value = (
                         np.max(material_property) + 1
                     )  # Use a value outside the material property range
-                    color_field[
-                        particle_type == 3
-                    ] = static_particle_value  # Assumes static particle type = 3
+                    color_field[particle_type == 3] = (
+                        static_particle_value  # Assumes static particle type = 3
+                    )
                     data["color"] = color_field
                 else:
                     # If no material property, use particle type for color

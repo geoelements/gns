@@ -1,0 +1,16 @@
+{
+    "name": "GNS Development Container",
+    "image": "ghcr.io/geoelements/gns:v2",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-toolsai.jupyter"
+            ]
+        }
+    },
+    "remoteUser": "root",
+    "mounts": [
+        "source=${localWorkspaceFolder},target=/app,type=bind,consistency=cached"
+    ]
+}
