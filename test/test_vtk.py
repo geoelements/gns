@@ -10,7 +10,7 @@ import logging
 from gns.train import rendering
 from omegaconf import DictConfig
 from typing import Tuple
-from utils.count_n_files import n_files
+from utils.file_utils import n_files
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
