@@ -34,13 +34,19 @@ python3 -m gns.train mode="train" training.resume=True
 python3 -m meshnet.train mode="train" training.resume=True
 ```
 
-> Rollout prediction
+> Rollout prediction and render
 ```shell
 # For particulate domain,
 python3 -m gns.train mode="rollout"
 # For mesh-based domain,
 python3 -m meshnet.train mode="rollout"
 ```
+### Rendering Options
+Set rendering mode with `rendering.mode=<option>`
+`null`: Disables rendering
+`gif`: Creates a .gif file (default)
+`vtk`: Writes .vtu files for ParaView visualization
+Example: `rendering.mode=null` to disable rendering
 
 > Render
 ```shell
@@ -49,8 +55,6 @@ python3 -m gns.render_rollout --output_mode="gif" --rollout_dir="<path-containin
 # For mesh-based domain,
 python3 -m gns.render --rollout_dir="<path-containing-rollout-file>" --rollout_name="<name-of-rollout-file>"
 ```
-
-In particulate domain, the renderer also writes `.vtu` files to visualize in ParaView.
 
 ![Sand rollout](docs/img/rollout_0.gif)
 > GNS prediction of Sand rollout after training for 2 million steps.
@@ -118,8 +122,16 @@ hardware:
 # Logging configuration
 logging:
   tensorboard_dir: logs/
-```
 
+# Rendering configuration
+rendering:
+  mode: gif
+  
+  gif:
+    step_stride: 3
+    vertical_camera_angle: 20
+    viewpoint_rotation: 0.3
+    change_yz: False
 </details>
 
 
@@ -180,7 +192,6 @@ The total number of training steps to execute before stopping.
 **nsave_steps (Integer)**
 
 Interval at which the model and training state are saved.
-
 </details>
 
 ## Datasets
