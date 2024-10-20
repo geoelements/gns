@@ -52,6 +52,7 @@ class HardwareConfig:
 class LoggingConfig:
     tensorboard_dir: str = "logs/"
 
+
 @dataclass
 class GifConfig:
     step_stride: int = 3
@@ -59,10 +60,12 @@ class GifConfig:
     viewpoint_rotation: float = 0.3
     change_yz: bool = False
 
+
 @dataclass
 class RenderingConfig:
-    mode: Optional[str] = field(default='gif')
+    mode: Optional[str] = field(default="gif")
     gif: GifConfig = field(default_factory=GifConfig)
+
 
 @dataclass
 class Config:
