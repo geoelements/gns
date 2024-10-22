@@ -4,12 +4,11 @@ import pickle
 import os
 import tempfile
 import shutil
-import glob
 import pyvista as pv
 import logging
 from gns.train import rendering
 from omegaconf import DictConfig
-from typing import Tuple
+from typing import Tuple, Dict
 from utils.file_utils import n_files
 
 # Configure logging
@@ -71,7 +70,7 @@ def dummy_pkl_data() -> dict:
 
 
 @pytest.fixture
-def temp_dir_with_file(dummy_pkl_data: dict) -> Tuple[str, str]:
+def temp_dir_with_file(dummy_pkl_data: Dict) -> Tuple[str, str]:
     """
     Fixture to create a temporary directory and a pickle file containing the
     provided dummy data for testing purposes.
@@ -108,6 +107,7 @@ def temp_dir_with_file(dummy_pkl_data: dict) -> Tuple[str, str]:
         logger.error(
             f"Failed to create a Temporary file for the input rollout data: {e}"
         )
+        raise
 
     finally:
         shutil.rmtree(temp_dir)
@@ -290,3 +290,4 @@ def test_rendering_vtk(
 
     except Exception as e:
         logger.error(f"Rendering test failed: {e}")
+        raise
