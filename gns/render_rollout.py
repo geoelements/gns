@@ -271,7 +271,10 @@ class Render:
                 }
 
                 # Check if material property exists and add it to data if it does
-                if "material_property" in self.rollout_data:
+                if (
+                    "material_property" in self.rollout_data
+                    and self.rollout_data["material_property"] is not None
+                ):
                     material_property = self.rollout_data["material_property"]
                     data["material_property"] = material_property
 

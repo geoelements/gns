@@ -21,6 +21,7 @@ from gns import noise_utils
 from gns import reading_utils
 from gns import particle_data_loader as pdl
 from gns import distribute
+from gns import render_rollout
 from gns.args import Config
 
 Stats = collections.namedtuple("Stats", ["mean", "std"])
@@ -200,13 +201,51 @@ def predict(device: str, cfg: DictConfig):
                 example_rollout["metadata"] = metadata
                 example_rollout["loss"] = loss.mean()
                 filename = f"{cfg.output.filename}_ex{example_i}.pkl"
-                filename = os.path.join(cfg.output.path, filename)
+                filename_render = f"{cfg.output.filename}_ex{example_i}"
+                filename = os.path.join(cfg.output.path, filename_render)
                 with open(filename, "wb") as f:
                     pickle.dump(example_rollout, f)
+            if cfg.rendering.mode:
+                rendering(cfg.output.path, filename_render, cfg)
 
     print(
         "Mean loss on rollout prediction: {}".format(torch.mean(torch.cat(eval_loss)))
     )
+
+
+def rendering(input_dir, input_name, cfg: DictConfig):
+    """
+    Render output based on the specified configuration and input parameters.
+    It supports rendering in both GIF and VTK formats.
+
+    Args:
+        input_dir (str): The directory containing the input files for rendering.
+        input_name (str): The base name of the input file to be rendered.
+        cfg (DictConfig): The configuration dictionary that specifies rendering options,
+                          including the rendering mode and relevant parameters for that mode.
+
+    Raises:
+        ValueError: If the specified rendering mode is not supported.
+    """
+    render = render_rollout.Render(input_dir, input_name)
+
+    rendering_modes = {
+        "gif": lambda: render.render_gif_animation(
+            point_size=1,
+            timestep_stride=cfg.rendering.gif.step_stride,
+            vertical_camera_angle=cfg.rendering.gif.vertical_camera_angle,
+            viewpoint_rotation=cfg.rendering.gif.viewpoint_rotation,
+            change_yz=cfg.rendering.gif.change_yz,
+        ),
+        "vtk": lambda: render.write_vtk(),
+    }
+
+    if cfg.rendering.mode in ["gif", "vtk"]:
+        rendering_mode = rendering_modes.get(cfg.rendering.mode)
+        rendering_mode()
+
+    else:
+        raise ValueError(f"Unsupported rendering mode: {cfg.rendering.mode}")
 
 
 def optimizer_to(optim, device):

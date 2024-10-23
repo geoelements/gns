@@ -54,6 +54,20 @@ class LoggingConfig:
 
 
 @dataclass
+class GifConfig:
+    step_stride: int = 3
+    vertical_camera_angle: int = 20
+    viewpoint_rotation: float = 0.3
+    change_yz: bool = False
+
+
+@dataclass
+class RenderingConfig:
+    mode: Optional[str] = field(default="gif")
+    gif: GifConfig = field(default_factory=GifConfig)
+
+
+@dataclass
 class Config:
     mode: str = "train"
     data: DataConfig = field(default_factory=DataConfig)
@@ -62,6 +76,7 @@ class Config:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     hardware: HardwareConfig = field(default_factory=HardwareConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    rendering: RenderingConfig = field(default_factory=RenderingConfig)
 
 
 # Hydra configuration
