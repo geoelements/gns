@@ -115,7 +115,7 @@ def predict(device: str, cfg: DictConfig):
 
     """
     # Read metadata
-    metadata = reading_utils.read_metadata(cfg.data.path, "rollout")
+    metadata = reading_utils.read_metadata(cfg.data.path, "rollout", cfg.data.meta_data)
     simulator = _get_simulator(
         metadata,
         cfg.data.num_particle_types,
@@ -200,8 +200,7 @@ def predict(device: str, cfg: DictConfig):
             if cfg.mode == "rollout":
                 example_rollout["metadata"] = metadata
                 example_rollout["loss"] = loss.mean()
-                filename = f"{cfg.output.filename}_ex{example_i}.pkl"
-                filename_render = f"{cfg.output.filename}_ex{example_i}"
+                filename_render = f"{cfg.output.filename}_ex{example_i}.pkl"
                 filename = os.path.join(cfg.output.path, filename_render)
                 with open(filename, "wb") as f:
                     pickle.dump(example_rollout, f)
@@ -377,7 +376,7 @@ def initialize_training(cfg, rank, world_size, device, use_dist):
       device: torch device type.
       use_dist: use torch.distribute
     """
-    metadata = reading_utils.read_metadata(cfg.data.path, "train")
+    metadata = reading_utils.read_metadata(cfg.data.path, "train", cfg.data.meta_data)
     simulator, optimizer = setup_simulator_and_optimizer(
         cfg, metadata, rank, world_size, device, use_dist
     )
