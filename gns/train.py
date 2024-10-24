@@ -200,8 +200,7 @@ def predict(device: str, cfg: DictConfig):
             if cfg.mode == "rollout":
                 example_rollout["metadata"] = metadata
                 example_rollout["loss"] = loss.mean()
-                filename = f"{cfg.output.filename}_ex{example_i}.pkl"
-                filename_render = f"{cfg.output.filename}_ex{example_i}"
+                filename_render = f"{cfg.output.filename}_ex{example_i}.pkl"
                 filename = os.path.join(cfg.output.path, filename_render)
                 with open(filename, "wb") as f:
                     pickle.dump(example_rollout, f)
