@@ -195,8 +195,9 @@ class InteractionNetwork(MessagePassing):
     """
     # Concat edge features with a final shape of [nedges, latent_dim*3]
     edge_features = torch.cat([x_i, x_j, edge_features], dim=-1)
-    edge_features = self.edge_fn(edge_features)
-    return edge_features
+    self._edge_features  = self.edge_fn(edge_features)
+
+    return self._edge_features 
 
   def update(self,
              x_updated: torch.tensor,
@@ -219,7 +220,7 @@ class InteractionNetwork(MessagePassing):
     # [nparticles, latent_dim (or nnode_in) *2]
     x_updated = torch.cat([x_updated, x], dim=-1)
     x_updated = self.node_fn(x_updated)
-    return x_updated, edge_features
+    return x_updated, self._edge_features
 
 
 class Processor(MessagePassing):
