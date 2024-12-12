@@ -8,7 +8,7 @@ jobs:
   gns:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/geoelements/gns:dataloader
+      image: ghcr.io/geoelements/gns:v2
 
     steps:
     - name: Checkout repository
