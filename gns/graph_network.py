@@ -187,6 +187,13 @@ class InteractionNetwork(MessagePassing):
         # Start propagating messages.
         # Takes in the edge indices and all additional data which is needed to
         # construct messages and to update node embeddings.
+        # Call PyG propagate() method:
+        # 1. Message phase - compute messages for each edge
+        # 2. Aggregate phase - aggregate messages for each node
+        # 3. Update phase - updates only the node features
+        # Update uses the message from step 1 and any original arguments passed to
+        # propagate() to update the node embeddings. This is why we need to store
+        # the updated edge features to return them from the update() method.
         x, edge_features = self.propagate(
             edge_index=edge_index, x=x, edge_features=edge_features
         )
@@ -212,8 +219,8 @@ class InteractionNetwork(MessagePassing):
         """
         # Concat edge features with a final shape of [nedges, latent_dim*3]
         edge_features = torch.cat([x_i, x_j, edge_features], dim=-1)
-        edge_features = self.edge_fn(edge_features)
-        return edge_features
+        self._edge_features = self.edge_fn(edge_features)  # Create and store
+        return self._edge_features  # This gets passed to aggregate()
 
     def update(
         self, x_updated: torch.tensor, x: torch.tensor, edge_features: torch.tensor
@@ -233,9 +240,13 @@ class InteractionNetwork(MessagePassing):
         """
         # Concat node features with a final shape of
         # [nparticles, latent_dim (or nnode_in) *2]
+        # This gets called later, after message() and aggregate()
+        # Update modified from MessagePassing takes the output of aggregation
+        # as first argument and any argument which was initially passed to
+        # propagate hence we need to return the stored value of edge_features
         x_updated = torch.cat([x_updated, x], dim=-1)
         x_updated = self.node_fn(x_updated)
-        return x_updated, edge_features
+        return x_updated, self._edge_features
 
 
 class Processor(MessagePassing):
