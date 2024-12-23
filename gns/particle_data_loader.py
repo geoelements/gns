@@ -74,9 +74,7 @@ class ParticleDataset(Dataset):
         n_particles_per_example = positions.shape[0]
 
         if self.material_property_as_feature:
-            material_property = np.full(
-                positions.shape[0], self.data[trajectory_idx][2], dtype=float
-            )
+            material_property = self.data[trajectory_idx][2]
             features = (
                 positions,
                 particle_type,
@@ -95,9 +93,6 @@ class ParticleDataset(Dataset):
             positions, particle_type, material_property = self.data[idx]
             positions = np.transpose(positions, (1, 0, 2))
             particle_type = np.full(positions.shape[0], particle_type, dtype=int)
-            material_property = np.full(
-                positions.shape[0], material_property, dtype=float
-            )
             n_particles_per_example = positions.shape[0]
 
             trajectory = (

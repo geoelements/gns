@@ -136,7 +136,8 @@ class LearnedSimulator(nn.Module):
           nparticles_per_example: Number of particles per example. Default is 2
             examples per batch.
           particle_types: Particle types with shape (nparticles).
-          material_property: Friction angle normalized by tan() with shape (nparticles)
+          material_property: Friction angle normalized by tan() with shape (nparticles, ).
+            Optionally, it can take multi material properties like (nparticles, n_material_properties)
         """
         nparticles = position_sequence.shape[0]
         most_recent_position = position_sequence[:, -1]  # (n_nodes, 2)
@@ -187,10 +188,12 @@ class LearnedSimulator(nn.Module):
 
         # Material property
         if material_property is not None:
-            material_property = material_property.view(nparticles, 1)
+            n_material_props = 1 if len(material_property.shape) == 1 else material_property.shape[-1]
+            material_property = material_property.view(nparticles, n_material_props)
             node_features.append(material_property)
-        # Final node_features shape (nparticles, 31) for 2D
-        # 31 = 10 (5 velocity sequences*dim) + 4 boundaries + 16 particle embedding + 1 material property
+        # Final node_features shape (nparticles, 30 + n_material_props) for 2D
+        # 30 + n_material_props =
+        #     10 (5 velocity sequences*dim) + 4 boundaries + 16 particle embedding + n_material_props
 
         # Collect edge features.
         edge_features = []
@@ -267,7 +270,8 @@ class LearnedSimulator(nn.Module):
           nparticles_per_example: Number of particles per example. Default is 2
             examples per batch.
           particle_types: Particle types with shape (nparticles).
-          material_property: Friction angle normalized by tan() with shape (nparticles)
+          material_property: Friction angle normalized by tan() with shape (nparticles, ).
+            Optionally, it can take multi material properties like (nparticles, n_material_properties)
 
         Returns:
           next_positions (torch.tensor): Next position of particles.

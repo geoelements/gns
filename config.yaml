@@ -14,6 +14,7 @@ mode: train
 # Data configuration
 data:
   path: ../gns-sample/WaterDropSample/dataset/
+  meta_data: metadata.json
   batch_size: 2
   noise_std: 6.7e-4
   input_sequence_length: 6
