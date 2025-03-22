@@ -59,7 +59,15 @@ flags.DEFINE_integer("local-rank", 0, help='local rank for distributed training'
 
 # Parameters for KAN
 flags.DEFINE_integer("use_kan", 0, help='set to 1 to use KAN, 0 to use MLP (default)')
-flags.DEFINE_integer('kan_hidden_dim', 0, help="Latent dimension for KAN")
+flags.DEFINE_integer('kan_hidden_dim', 0, help="Hidden dimension for KAN")
+
+# Parameter for MLP
+flags.DEFINE_integer('mlp_hidden_dim', 128, help="Latent dimension for MLP")
+
+# Parameters for model
+flags.DEFINE_integer('latent_dim', 128, help="Latent dimension for model")
+flags.DEFINE_integer('nmlp_layers', 1, help="MLP layers")
+
 
 FLAGS = flags.FLAGS
 
@@ -152,6 +160,7 @@ def predict(device: str, flags):
   # Params for KAN
   use_kan =flags['use_kan']
   kan_hidden_dim = flags['kan_hidden_dim']
+  mlp_hidden_dim = flags['mlp_hidden_dim']
   simulator = _get_simulator(metadata, FLAGS.noise_std, FLAGS.noise_std, device, use_kan, kan_hidden_dim)
 
   # Load simulator
@@ -257,7 +266,8 @@ def acceleration_loss(pred_acc, target_acc, non_kinematic_mask):
   return loss
 
 def save_model_and_train_state(verbose, device, simulator, flags, step, epoch, optimizer,
-                                train_loss, valid_loss, train_loss_hist, valid_loss_hist):
+                                train_loss, valid_loss, train_loss_hist, valid_loss_hist,
+                                epoch_train_loss):
   """Save model state
   
   Args:
@@ -284,7 +294,8 @@ def save_model_and_train_state(verbose, device, simulator, flags, step, epoch, o
                           "step": step, 
                           "epoch": epoch,
                           "train_loss": train_loss,
-                          "valid_loss": valid_loss
+                          "valid_loss": valid_loss,
+                          "epoch_train_loss": epoch_train_loss,
                           },
                         loss_history={"train": train_loss_hist, "valid": valid_loss_hist}
                         )
@@ -310,6 +321,7 @@ def train(rank, flags, world_size, device, verbose):
   # Params for KAN
   use_kan =flags['use_kan']
   kan_hidden_dim = flags['kan_hidden_dim']
+  mlp_hidden_dim = flags['mlp_hidden_dim']
 
   # Get simulator and optimizer
   if device == torch.device("cuda"):
@@ -326,7 +338,6 @@ def train(rank, flags, world_size, device, verbose):
   # Initialize training state
   step = 0
   epoch = 0
-  steps_per_epoch = 0
 
   valid_loss = None
   epoch_train_loss = 0
@@ -366,10 +377,11 @@ def train(rank, flags, world_size, device, verbose):
       optimizer.load_state_dict(train_state["optimizer_state"])
       optimizer_to(optimizer, device_id)
       # set global train state
-      step = train_state["global_train_state"]["step"]
+      step = train_state["global_train_state"]["step"] + 1
       epoch = train_state["global_train_state"]["epoch"]
       train_loss_hist = train_state["loss_history"]["train"]
       valid_loss_hist = train_state["loss_history"]["valid"]
+      epoch_train_loss = train_state["global_train_state"]["epoch_train_loss"]
 
     else:
       msg = f'Specified model_file {flags["model_path"] + flags["model_file"]} and train_state_file {flags["model_path"] + flags["train_state_file"]} not found.'
@@ -423,9 +435,8 @@ def train(rank, flags, world_size, device, verbose):
         torch.distributed.barrier()
       else:
         pass
-      for example in dl:  
-        torch.cuda.empty_cache()
-        steps_per_epoch += 1
+      cur_step = step % len(dl)
+      for example in dl: 
         # ((position, particle_type, material_property, n_particles_per_example), labels) are in dl
         position = example[0][0].to(device_id)
         particle_type = example[0][1].to(device_id)
@@ -459,12 +470,16 @@ def train(rank, flags, world_size, device, verbose):
         )
         
         # Validation
-        if flags["validation_interval"] is not None:
+        if (
+          flags["validation_interval"] is not None 
+          and step > 0 
+          and step % flags["validation_interval"] == 0 
+          and verbose
+        ):
           sampled_valid_example = next(iter(dl_valid))
-          if step > 0 and step % flags["validation_interval"] == 0:
-              valid_loss = validation(
-                simulator, sampled_valid_example, n_features, flags, rank, device_id)
-              print(f"Validation loss at {step}: {valid_loss.item()}")
+          valid_loss = validation(
+            simulator, sampled_valid_example, n_features, flags, rank, device_id)
+          print(f"Validation loss at {step}: {valid_loss.item()}")
 
         # Calculate the loss and mask out loss on kinematic particles
         loss = acceleration_loss(pred_acc, target_acc, non_kinematic_mask)
@@ -494,16 +509,22 @@ def train(rank, flags, world_size, device, verbose):
           # Save model state
           if step % flags["nsave_steps"] == 0:
             save_model_and_train_state(verbose, device, simulator, flags, step, epoch, \
-                                       optimizer, train_loss, valid_loss, train_loss_hist, valid_loss_hist)
+                                       optimizer, train_loss, valid_loss, train_loss_hist, \
+                                       valid_loss_hist, epoch_train_loss)
 
         step += 1
+        cur_step += 1
         if step >= flags["ntraining_steps"]:
           break
-
+        if cur_step % len(dl) == 0:
+          break
 
       # Epoch level statistics
       # Training loss at epoch
-      epoch_train_loss /= steps_per_epoch
+      step_this_epoch = len(dl) if (step != flags["ntraining_steps"]) else (step % len(dl))
+      if step_this_epoch == 0:
+        step_this_epoch = len(dl)
+      epoch_train_loss /= step_this_epoch
       epoch_train_loss = torch.tensor([epoch_train_loss]).to(device_id)
       if device == torch.device("cuda"):
         torch.distributed.reduce(epoch_train_loss, dst=0, op=torch.distributed.ReduceOp.SUM)
@@ -530,9 +551,9 @@ def train(rank, flags, world_size, device, verbose):
       
       # Reset epoch training loss
       epoch_train_loss = 0
-      if steps_per_epoch >= len(dl):
+      if cur_step >= len(dl):
         epoch += 1
-      steps_per_epoch = 0
+      cur_step = 0
       
       if step >= flags["ntraining_steps"]:
         break
@@ -541,7 +562,9 @@ def train(rank, flags, world_size, device, verbose):
     pass
 
   # Save model state on keyboard interrupt
-  save_model_and_train_state(verbose, device, simulator, flags, step, epoch, optimizer, train_loss, valid_loss, train_loss_hist, valid_loss_hist)
+  save_model_and_train_state(verbose, device, simulator, flags, step, epoch, \
+    optimizer, train_loss, valid_loss, train_loss_hist, valid_loss_hist, \
+    epoch_train_loss)
 
 
   if torch.cuda.is_available():
@@ -554,7 +577,7 @@ def _get_simulator(
         vel_noise_std: float,
         device: torch.device,
         use_kan: int,
-        kan_hidden_dim: int,
+        kan_hidden_dim: int
         ) -> learned_simulator.LearnedSimulator:
   """Instantiates the simulator.
 
@@ -589,16 +612,16 @@ def _get_simulator(
     nnode_in = 37 if metadata['dim'] == 3 else 30
     nedge_in = metadata['dim'] + 1
 
+  print(f"init simiulator with mlp hidden dim mlp hidden {FLAGS.mlp_hidden_dim} kan hidden {kan_hidden_dim} latent {FLAGS.latent_dim} nmlp layer {FLAGS.nmlp_layers}")
   # Init simulator.
-   # debug, TODO: change nmessage_passing_steps back to 10??
   simulator = learned_simulator.LearnedSimulator(
       particle_dimensions=metadata['dim'],
       nnode_in=nnode_in,
       nedge_in=nedge_in,
-      latent_dim=128,
+      latent_dim=FLAGS.latent_dim,
       nmessage_passing_steps=10,
-      nmlp_layers=1,
-      mlp_hidden_dim=128,
+      nmlp_layers=FLAGS.nmlp_layers,
+      mlp_hidden_dim=FLAGS.mlp_hidden_dim,
       connectivity_radius=metadata['default_connectivity_radius'],
       boundaries=np.array(metadata['bounds']),
       normalization_stats=normalization_stats,
@@ -660,7 +683,6 @@ def main(_):
   """Train or evaluates the model.
 
   """
-  torch.cuda.empty_cache()
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
   myflags = reading_utils.flags_to_dict(FLAGS)
