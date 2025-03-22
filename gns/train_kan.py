@@ -612,7 +612,7 @@ def _get_simulator(
     nnode_in = 37 if metadata['dim'] == 3 else 30
     nedge_in = metadata['dim'] + 1
 
-  print(f"init simiulator with mlp hidden dim mlp hidden {FLAGS.mlp_hidden_dim} kan hidden {kan_hidden_dim} latent {FLAGS.latent_dim} nmlp layer {FLAGS.nmlp_layers}")
+  # print(f"init simiulator with mlp hidden dim {FLAGS.mlp_hidden_dim} kan hidden {kan_hidden_dim} latent {FLAGS.latent_dim} nmlp layer {FLAGS.nmlp_layers}")
   # Init simulator.
   simulator = learned_simulator.LearnedSimulator(
       particle_dimensions=metadata['dim'],
