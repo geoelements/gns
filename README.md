@@ -56,19 +56,19 @@ python3 -m gns.render_rollout --output_mode="gif" --rollout_dir="<path-containin
 
 This flag is used to set the operation mode for the script. It can take one of three values; 'train', 'valid', or 'rollout'.
 
-**use_kan**
+**use_kan (0 or 1)**
 
 Set this flag to 1 if you choose a model with KAN, or 0 if you choose a model with MLP.
 
-**latent_dim**
+**latent_dim (Integer)**
 
 Latent dimention of the model.
 
-**nmlp_layers**
+**nmlp_layers (Integer)**
 
 Number of MLP embedding layers.
 
-**mlp_hidden_dim**
+**mlp_hidden_dim (Integer)**
 
 Hidden dimention for MLP layers.
 
