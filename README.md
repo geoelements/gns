@@ -35,8 +35,8 @@ python -m torch.distributed.launch  --data_path="<input-training-data-path>" --m
 
 > Rollout prediction
 ```shell
-# torchrun --standalone --nproc_per_node 1 gns/train_kan.py  \
-# --mode="rollout" ---data_path="<input-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" --model_file="model.pt" --train_state_file="train_state.pt" [ARGS] 
+torchrun --standalone --nproc_per_node 1 gns/train_kan.py  
+--mode="rollout" ---data_path="<input-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" --model_file="model.pt" --train_state_file="train_state.pt" [ARGS] 
 ```
 
 > Render
@@ -44,7 +44,6 @@ python -m torch.distributed.launch  --data_path="<input-training-data-path>" --m
 python3 -m gns.render_rollout --output_mode="gif" --rollout_dir="<path-containing-rollout-file>" --rollout_name="<name-of-rollout-file>"
 ```
 
-In particulate domain, the renderer also writes `.vtu` files to visualize in ParaView.
 
 ![Sand rollout](docs/img/rollout_0.gif)
 > GNS prediction of Sand rollout after training for 2 million steps.
@@ -149,65 +148,6 @@ Number of GPUs to use for training.
 </details>
 
 
-
-<details>
-<summary>`train.py` in MeshNet (mesh-based domain) </summary>
-
-**mode (String)**
-
-This flag is used to set the operation mode for the script. It can take one of three values; 'train', 'valid', or 'rollout'.
-
-**batch_size (Integer)** 
-
-Batch size for training.
-
-**data_path (String)**
-
-Specifies the directory path where the dataset is located. 
-The dataset is expected to be in a specific format (e.g., .npz files).
-If `--mode` is training, the directory should contain `train.npz`.
-If `--mode` is testing (rollout), the directory should contain `test.npz`.
-If `--mode` is valid, the directory should contain `valid.npz`.
-
-**model_path (String)** 
-
-The directory path where the trained model checkpoints are saved during training or loaded from during validation/rollout.
-
-**output_path (String)**
-
-Defines the directory where the outputs (e.g., rollouts) are saved, 
-when the `--mode` is set to rollout.
-This is particularly relevant in the rollout mode where the predictions of the model are stored.
-
-**model_file (String)**
-
-The filename of the model checkpoint to load for validation or rollout (e.g., model-10000.pt). 
-It supports a special value "latest" to automatically select the newest checkpoint file. 
-This flexibility facilitates the evaluation of models at different stages of training.
-
-**train_state_file (String)**
-
-Similar to model_file, but for loading the training state (e.g., optimizer state).
-It supports a special value "latest" to automatically select the newest checkpoint file. 
-(e.g., training_state-10000.pt)
-
-**cuda_device_number (Integer)**
-
-Allows specifying a particular CUDA device for training or evaluation, enabling the use of specific GPUs in multi-GPU setups.
-
-**rollout_filename (String)**
-
-Base name for saving rollout files. The actual filenames will append an index to this base name.
-
-**ntraining_steps (Integer)**
-
-The total number of training steps to execute before stopping.
-
-**nsave_steps (Integer)**
-
-Interval at which the model and training state are saved.
-
-</details>
 
 ## Datasets
 We use the numpy `.npz` format for storing positional data for GNS training.  The `.npz` format includes a list of tuples of arbitrary length where each tuple corresponds to a differenet training trajectory and is of the form `(position, particle_type)`.  The data loader provides `INPUT_SEQUENCE_LENGTH` positions, set equal to six by default, to provide the GNS with the last `INPUT_SEQUENCE_LENGTH` minus one positions as input to predict the position at the next time step.  The `position` is a 3-D tensor of shape `(n_time_steps, n_particles, n_dimensions)` and `particle_type` is a 1-D tensor of shape `(n_particles)`.  
