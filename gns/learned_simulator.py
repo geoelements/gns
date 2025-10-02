@@ -74,6 +74,13 @@ class LearnedSimulator(nn.Module):
 
         self._device = device
 
+        # Optimized: Register boundary tensor as buffer for automatic device management
+        # This avoids recreating the tensor on every forward pass
+        self.register_buffer(
+            '_boundary_tensor',
+            torch.tensor(boundaries, dtype=torch.float32)
+        )
+
     def forward(self):
         """Forward hook runs on class instantiation"""
         pass
@@ -95,12 +102,11 @@ class LearnedSimulator(nn.Module):
           add_self_edges: Boolean flag to include self edge (default: True)
         """
         # Specify examples id for particles
-        batch_ids = torch.cat(
-            [
-                torch.LongTensor([i for _ in range(n)])
-                for i, n in enumerate(nparticles_per_example)
-            ]
-        ).to(self._device)
+        # Optimized: Use repeat_interleave instead of list comprehension + cat
+        batch_ids = torch.repeat_interleave(
+            torch.arange(len(nparticles_per_example), device=self._device, dtype=torch.long),
+            nparticles_per_example
+        )
 
         # radius_graph accepts r < radius not r <= radius
         # A torch tensor list of source and target nodes with shape (2, nedges)
@@ -161,11 +167,9 @@ class LearnedSimulator(nn.Module):
         # Normalized clipped distances to lower and upper boundaries.
         # boundaries are an array of shape [num_dimensions, 2], where the second
         # axis, provides the lower/upper boundaries.
-        boundaries = (
-            torch.tensor(self._boundaries, requires_grad=False).float().to(self._device)
-        )
-        distance_to_lower_boundary = most_recent_position - boundaries[:, 0][None]
-        distance_to_upper_boundary = boundaries[:, 1][None] - most_recent_position
+        # Optimized: Use pre-computed boundary tensor buffer
+        distance_to_lower_boundary = most_recent_position - self._boundary_tensor[:, 0][None]
+        distance_to_upper_boundary = self._boundary_tensor[:, 1][None] - most_recent_position
         distance_to_boundaries = torch.cat(
             [distance_to_lower_boundary, distance_to_upper_boundary], dim=1
         )
@@ -193,28 +197,19 @@ class LearnedSimulator(nn.Module):
         # 31 = 10 (5 velocity sequences*dim) + 4 boundaries + 16 particle embedding + 1 material property
 
         # Collect edge features.
-        edge_features = []
+        # Optimized: Compute displacement and distance together to reduce indexing operations
+        sender_pos = most_recent_position[senders, :]
+        receiver_pos = most_recent_position[receivers, :]
+        relative_displacements = sender_pos - receiver_pos
 
-        # Relative displacement and distances normalized to radius
-        # with shape (nedges, 2)
-        # normalized_relative_displacements = (
-        #     torch.gather(most_recent_position, 0, senders) -
-        #     torch.gather(most_recent_position, 0, receivers)
-        # ) / self._connectivity_radius
-        normalized_relative_displacements = (
-            most_recent_position[senders, :] - most_recent_position[receivers, :]
-        ) / self._connectivity_radius
+        # Compute distance before normalization for numerical stability
+        relative_distances = torch.norm(relative_displacements, dim=-1, keepdim=True)
 
-        # Add relative displacement between two particles as an edge feature
-        # with shape (nparticles, ndim)
-        edge_features.append(normalized_relative_displacements)
+        # Normalize both by connectivity radius
+        normalized_relative_displacements = relative_displacements / self._connectivity_radius
+        normalized_relative_distances = relative_distances / self._connectivity_radius
 
-        # Add relative distance between 2 particles with shape (nparticles, 1)
-        # Edge features has a final shape of (nparticles, ndim + 1)
-        normalized_relative_distances = torch.norm(
-            normalized_relative_displacements, dim=-1, keepdim=True
-        )
-        edge_features.append(normalized_relative_distances)
+        edge_features = [normalized_relative_displacements, normalized_relative_distances]
 
         return (
             torch.cat(node_features, dim=-1),

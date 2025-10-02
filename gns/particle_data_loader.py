@@ -131,41 +131,63 @@ class ParticleDataset(Dataset):
 
 
 def collate_fn_sample(batch):
+    """Optimized collation function with pre-allocation and minimal copies."""
     features, labels = zip(*batch)
 
-    position_list = []
-    particle_type_list = []
-    material_property_list = []
-    n_particles_per_example_list = []
+    # Pre-calculate total particles to avoid reallocation
+    total_particles = sum(f[0].shape[0] for f in features)
+    batch_size = len(features)
+    has_material = len(features[0]) == 4
 
-    for feature in features:
-        position_list.append(feature[0])
-        particle_type_list.append(feature[1])
-        if len(feature) == 4:  # If material property is present
-            material_property_list.append(feature[2])
-            n_particles_per_example_list.append(feature[3])
+    # Get dimensions from first sample
+    seq_len = features[0][0].shape[1]
+    dim = features[0][0].shape[2]
+
+    # Pre-allocate tensors with pinned memory for faster GPU transfer
+    positions = torch.empty((total_particles, seq_len, dim),
+                           dtype=torch.float32, pin_memory=True)
+    particle_types = torch.empty(total_particles,
+                                 dtype=torch.long, pin_memory=True)
+    n_particles = torch.empty(batch_size,
+                             dtype=torch.long, pin_memory=True)
+
+    if has_material:
+        materials = torch.empty(total_particles,
+                               dtype=torch.float32, pin_memory=True)
+
+    # Fill pre-allocated tensors (single copy from numpy)
+    offset = 0
+    for i, feature in enumerate(features):
+        n_part = feature[0].shape[0]
+
+        # Direct numpy-to-torch copy
+        positions[offset:offset+n_part] = torch.from_numpy(feature[0])
+        particle_types[offset:offset+n_part] = torch.from_numpy(feature[1])
+
+        if has_material:
+            materials[offset:offset+n_part] = torch.from_numpy(feature[2])
+            n_particles[i] = feature[3]
         else:
-            n_particles_per_example_list.append(feature[2])
+            n_particles[i] = feature[2]
 
-    collated_features = (
-        torch.tensor(np.vstack(position_list)).to(torch.float32).contiguous(),
-        torch.tensor(np.concatenate(particle_type_list)).contiguous(),
-        torch.tensor(n_particles_per_example_list).contiguous(),
-    )
+        offset += n_part
 
-    if material_property_list:
-        material_property_tensor = (
-            torch.tensor(np.concatenate(material_property_list))
-            .to(torch.float32)
-            .contiguous()
-        )
-        collated_features = (
-            collated_features[:2] + (material_property_tensor,) + collated_features[2:]
-        )
+    # Build output tuple
+    if has_material:
+        collated_features = (positions, particle_types, materials, n_particles)
+    else:
+        collated_features = (positions, particle_types, n_particles)
 
-    collated_labels = torch.tensor(np.vstack(labels)).to(torch.float32).contiguous()
+    # Labels - same optimization
+    labels_tensor = torch.empty((total_particles, dim),
+                               dtype=torch.float32, pin_memory=True)
+    offset = 0
+    for label in labels:
+        n_part = label.shape[0]
+        labels_tensor[offset:offset+n_part] = torch.from_numpy(label)
+        offset += n_part
 
-    return collated_features, collated_labels
+    return collated_features, labels_tensor
 
 
 def collate_fn_trajectory(batch):

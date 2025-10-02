@@ -53,8 +53,20 @@ def rollout(
     initial_positions = position[:, : cfg.data.input_sequence_length]
     ground_truth_positions = position[:, cfg.data.input_sequence_length :]
 
-    current_positions = initial_positions
-    predictions = []
+    current_positions = initial_positions.clone()
+
+    # Pre-allocate predictions tensor to avoid memory fragmentation
+    n_particles = position.shape[0]
+    dim = position.shape[-1]
+    predictions = torch.zeros(
+        (nsteps, n_particles, dim),
+        device=device,
+        dtype=position.dtype
+    )
+
+    # Pre-compute kinematic mask once (static for entire rollout)
+    kinematic_mask = (particle_types == cfg.data.kinematic_particle_id).bool()
+    kinematic_mask_expanded = kinematic_mask[:, None].expand(-1, dim)
 
     for step in tqdm(range(nsteps), total=nsteps):
         # Get next position with shape (nnodes, dim)
@@ -66,29 +78,17 @@ def rollout(
         )
 
         # Update kinematic particles from prescribed trajectory.
-        kinematic_mask = (
-            (particle_types == cfg.data.kinematic_particle_id)
-            .clone()
-            .detach()
-            .to(device)
-        )
         next_position_ground_truth = ground_truth_positions[:, step]
-        kinematic_mask = kinematic_mask.bool()[:, None].expand(
-            -1, current_positions.shape[-1]
-        )
         next_position = torch.where(
-            kinematic_mask, next_position_ground_truth, next_position
-        )
-        predictions.append(next_position)
-
-        # Shift `current_positions`, removing the oldest position in the sequence
-        # and appending the next position at the end.
-        current_positions = torch.cat(
-            [current_positions[:, 1:], next_position[:, None, :]], dim=1
+            kinematic_mask_expanded, next_position_ground_truth, next_position
         )
 
-    # Predictions with shape (time, nnodes, dim)
-    predictions = torch.stack(predictions)
+        # Store prediction in pre-allocated tensor
+        predictions[step] = next_position
+
+        # Shift `current_positions` in-place
+        current_positions[:, :-1] = current_positions[:, 1:].clone()
+        current_positions[:, -1] = next_position
     ground_truth_positions = ground_truth_positions.permute(1, 0, 2)
 
     loss = (predictions - ground_truth_positions) ** 2
@@ -577,41 +577,28 @@ def train(rank, cfg, world_size, device, verbose, use_dist):
                         labels,
                     ) = prepare_data(example, device_id)
 
-                    n_particles_per_example = n_particles_per_example.to(device_id)
-                    labels = labels.to(device_id)
-
-                    sampled_noise = (
-                        noise_utils.get_random_walk_noise_for_position_sequence(
-                            position, noise_std_last_step=cfg.data.noise_std
-                        ).to(device_id)
+                    # Optimized: Data already on device_id from prepare_data, no need to transfer again
+                    # Noise is now created directly on correct device (see noise_utils.py optimization)
+                    sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(
+                        position, noise_std_last_step=cfg.data.noise_std
                     )
-                    non_kinematic_mask = (
-                        (particle_type != cfg.data.kinematic_particle_id)
-                        .clone()
-                        .detach()
-                        .to(device_id)
-                    )
+                    # Optimized: Comparison already creates new tensor, no need for clone/detach
+                    non_kinematic_mask = (particle_type != cfg.data.kinematic_particle_id)
                     sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
 
-                    device_or_rank = rank if device == torch.device("cuda") else device
                     predict_fn = (
                         simulator.module.predict_accelerations
                         if use_dist
                         else simulator.predict_accelerations
                     )
+                    # Optimized: All tensors already on correct device, no transfers needed
                     pred_acc, target_acc = predict_fn(
-                        next_positions=labels.to(device_or_rank),
-                        position_sequence_noise=sampled_noise.to(device_or_rank),
-                        position_sequence=position.to(device_or_rank),
-                        nparticles_per_example=n_particles_per_example.to(
-                            device_or_rank
-                        ),
-                        particle_types=particle_type.to(device_or_rank),
-                        material_property=(
-                            material_property.to(device_or_rank)
-                            if n_features == 3
-                            else None
-                        ),
+                        next_positions=labels,
+                        position_sequence_noise=sampled_noise,
+                        position_sequence=position,
+                        nparticles_per_example=n_particles_per_example,
+                        particle_types=particle_type,
+                        material_property=material_property if n_features == 3 else None,
                     )
 
                     if (
