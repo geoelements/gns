@@ -12,6 +12,10 @@
 
 Graph Network-based Simulator (GNS) is a generalizable, efficient, and accurate machine learning (ML)-based surrogate simulator for particulate and fluid systems using Graph Neural Networks (GNNs). GNS code is a viable surrogate for numerical methods such as Material Point Method, Smooth Particle Hydrodynamics and Computational Fluid dynamics. GNS exploits distributed data parallelism to achieve fast multi-GPU training. The GNS code can handle complex boundary conditions and multi-material interactions.
 
+### Graph Partitioning for Memory Optimization
+
+
+This branch introduces a feature that partitions large graphs into smaller subgraphs to reduce memory pressure during processing. By default, the graph is split into 2 parts, and these subgraphs are processed sequentially. You can customize the number of partitions by modifying the num_parts parameter in gns/learned_simulator.py. This approach is particularly useful for handling large-scale graphs on devices with limited memory resources.
 
 ## Run GNS
 
@@ -56,9 +60,6 @@ python3 -m gns.render_rollout --output_mode="gif" --rollout_dir="<path-containin
 
 This flag is used to set the operation mode for the script. It can take one of three values; 'train', 'valid', or 'rollout'.
 
-**use_kan (0 or 1)**
-
-Set this flag to 1 if you choose a model with KAN, or 0 if you choose a model with MLP.
 
 **latent_dim (Integer)**
 
@@ -183,7 +184,7 @@ Download the dataset [DesignSafe DataDepot](https://doi.org/10.17603/ds2-0phb-dg
 ## Installation
 ### Pulling GNS container 
 
-docker pull skyeglitch/gns-test
+docker pull skyeglitch/gns:phy
 
 ### Inspiration
 PyTorch version of Graph Network Simulator and Mesh Graph Network Simulator are based on:
@@ -200,7 +201,7 @@ To test on the small waterdroplet sample:
 
 ```
 git clone https://github.com/geoelements/gns-sample
-git checkout kan-gns
+git checkout partition-graph
 
 TMP_DIR="./gns-sample"
 DATASET_NAME="WaterDropSample"
@@ -212,7 +213,7 @@ DATA_PATH="${TMP_DIR}/${DATASET_NAME}/dataset/"
 MODEL_PATH="${TMP_DIR}/${DATASET_NAME}/models/"
 ROLLOUT_PATH="${TMP_DIR}/${DATASET_NAME}/rollout/"
 
-sbatch slurm_scripts/train_parallel_multinode_push.sh
+sbatch slurm_scripts/train.sh
 ```
 
 

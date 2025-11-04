@@ -2,11 +2,10 @@ import torch
 import torch.nn as nn
 import numpy as np
 from gns import graph_network
-from gns import graph_network_kan
 from torch_geometric.nn import radius_graph
 from typing import Dict
 from typing import List
-
+import torch_geometric as pyg
 
 class LearnedSimulator(nn.Module):
   """Learned simulator from https://arxiv.org/pdf/2002.09405.pdf."""
@@ -25,8 +24,6 @@ class LearnedSimulator(nn.Module):
           normalization_stats: dict,
           nparticle_types: int,
           particle_type_embedding_size: int,
-          use_kan: int,
-          kan_hidden_dim: int,
           boundary_clamp_limit: float = 1.0,
           device="cpu",
   ):
@@ -65,25 +62,14 @@ class LearnedSimulator(nn.Module):
         nparticle_types, particle_type_embedding_size)
 
     # Initialize the EncodeProcessDecode
-    # self._encode_process_decode = graph_network.EncodeProcessDecode(
-    #     nnode_in_features=nnode_in,
-    #     nnode_out_features=particle_dimensions,
-    #     nedge_in_features=nedge_in,
-    #     latent_dim=latent_dim,
-    #     nmessage_passing_steps=nmessage_passing_steps,
-    #     nmlp_layers=nmlp_layers,
-    #     mlp_hidden_dim=mlp_hidden_dim)
-    self._encode_process_decode = graph_network_kan.EncodeProcessDecode(
-      nnode_in_features=nnode_in,
-      nnode_out_features=particle_dimensions,
-      nedge_in_features=nedge_in,
-      latent_dim=latent_dim,
-      nmessage_passing_steps=nmessage_passing_steps,
-      nmlp_layers=nmlp_layers,
-      mlp_hidden_dim=mlp_hidden_dim,
-      use_kan=use_kan,
-      kan_hidden_dim=kan_hidden_dim,
-      )
+    self._encode_process_decode = graph_network.EncodeProcessDecode(
+         nnode_in_features=nnode_in,
+         nnode_out_features=particle_dimensions,
+         nedge_in_features=nedge_in,
+         latent_dim=latent_dim,
+         nmessage_passing_steps=nmessage_passing_steps,
+         nmlp_layers=nmlp_layers,
+         mlp_hidden_dim=mlp_hidden_dim)
 
     self._device = device
 
@@ -277,6 +263,7 @@ class LearnedSimulator(nn.Module):
     else:
         node_features, edge_index, edge_features = self._encoder_preprocessor(
             current_positions, nparticles_per_example, particle_types)
+
     predicted_normalized_acceleration = self._encode_process_decode(
         node_features, edge_index, edge_features)
     next_positions = self._decoder_postprocessor(
@@ -321,8 +308,56 @@ class LearnedSimulator(nn.Module):
     else:
         node_features, edge_index, edge_features = self._encoder_preprocessor(
             noisy_position_sequence, nparticles_per_example, particle_types)
-    predicted_normalized_acceleration = self._encode_process_decode(
-        node_features, edge_index, edge_features)
+    
+        
+    # partition the graph
+    self.num_parts = 2
+    graph = pyg.data.Data(x=node_features, edge_index=edge_index, edge_attr=edge_features)
+    self.num_nodes = graph.num_nodes
+    cluster_data = pyg.loader.ClusterData(graph, num_parts=self.num_parts)
+    part_meta = cluster_data.partition
+    # Create partitions with halo regions using PyG `k_hop_subgraph`.
+    self.partitions = []
+    for i in range(self.num_parts):
+        # Get inner nodes of the partition.
+        part_inner_node = part_meta.node_perm[
+            part_meta.partptr[i] : part_meta.partptr[i + 1]
+        ]
+        # Partition the graph with halo regions
+        part_node, part_edge_index, inner_node_mapping, edge_mask = (
+            pyg.utils.k_hop_subgraph(
+                part_inner_node,
+                num_hops=10,
+                edge_index=graph.edge_index,
+                num_nodes=self.num_nodes,
+                relabel_nodes=True,
+            )
+        )
+        partition = pyg.data.Data(
+            edge_index=part_edge_index,
+            edge_attr=graph.edge_attr[edge_mask],
+            num_nodes=part_node.size(0),
+            part_node=part_node,
+            inner_node=inner_node_mapping,
+        )
+        # Set partition node attributes.
+        for k, v in graph.items():
+            if graph.is_node_attr(k):
+                setattr(partition, k, v[part_node])
+
+        self.partitions.append(partition)
+
+
+    #predicted_normalized_acceleration = self._encode_process_decode(
+    #    node_features, edge_index, edge_features)
+    
+    predicted_normalized_acceleration = torch.zeros((self.num_nodes, 2)).to(self._device)
+    for part in self.partitions:
+        part = part.to(self._device)
+        partial_results = self._encode_process_decode(part.x, part.edge_index, part.edge_attr)
+        original_nodes = part.part_node[part.inner_node]
+        predicted_normalized_acceleration[original_nodes] = self._encode_process_decode(part.x, part.edge_index, part.edge_attr)[part.inner_node]
+
 
     # Calculate the target acceleration, using an `adjusted_next_position `that
     # is shifted by the noise in the last input position.

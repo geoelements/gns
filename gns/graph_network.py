@@ -46,7 +46,8 @@ def build_mlp(
 
 
 class Encoder(nn.Module):
-  """Graph network encoder. Encode nodes and edges states to an MLP. The Encode:
+  r"""
+  Graph network encoder. Encode nodes and edges states to an MLP. The Encode:
   :math: `\mathcal{X} \rightarrow \mathcal{G}` embeds the particle-based state
   representation, :math: `\mathcal{X}`, as a latent graph, :math:
   `G^0 = encoder(\mathcal{X})`, where :math: `G = (V, E, u), v_i \in V`, and
@@ -61,7 +62,8 @@ class Encoder(nn.Module):
           nedge_out_features: int,
           nmlp_layers: int,
           mlp_hidden_dim: int):
-    """The Encoder implements nodes features :math: `\varepsilon_v` and edge
+    r"""
+    The Encoder implements nodes features :math: `\varepsilon_v` and edge
     features :math: `\varepsilon_e` as multilayer perceptrons (MLP) into the
     latent vectors, :math: `v_i` and :math: `e_{i,j}`, of size 128.
 
@@ -99,7 +101,8 @@ class Encoder(nn.Module):
           self,
           x: torch.tensor,
           edge_features: torch.tensor):
-    """The forward hook runs when the Encoder class is instantiated
+    r"""
+    The forward hook runs when the Encoder class is instantiated
 
     Args:
       x: Particle state representation as a torch tensor with shape
@@ -179,7 +182,8 @@ class InteractionNetwork(MessagePassing):
               x_i: torch.tensor,
               x_j: torch.tensor,
               edge_features: torch.tensor) -> torch.tensor:
-    """Constructs message from j to i of edge :math:`e_{i, j}`. Tensors :obj:`x`
+    r"""
+    Constructs message from j to i of edge :math:`e_{i, j}`. Tensors :obj:`x`
     passed to :meth:`propagate` can be mapped to the respective nodes :math:`i`
     and :math:`j` by appending :obj:`_i` or :obj:`_j` to the variable name,
     i.e., :obj:`x_i` and :obj:`x_j`.
@@ -223,7 +227,8 @@ class InteractionNetwork(MessagePassing):
 
 
 class Processor(MessagePassing):
-  """The Processor: :math: `\mathcal{G} \rightarrow \mathcal{G}` computes 
+  r"""
+  The Processor: :math: `\mathcal{G} \rightarrow \mathcal{G}` computes 
   interactions among nodes via :math: `M` steps of learned message-passing, to 
   generate a sequence of updated latent graphs, :math: `G = (G_1 , ..., G_M )`, 
   where :math: `G^{m+1| = GN^{m+1} (G^m )`. It returns the final graph, 
@@ -243,7 +248,8 @@ class Processor(MessagePassing):
       nmlp_layers: int,
       mlp_hidden_dim: int,
   ):
-    """Processor derived from torch_geometric MessagePassing class. The 
+    r"""
+    Processor derived from torch_geometric MessagePassing class. The 
     processor uses a stack of :math: `M GNs` (where :math: `M` is a 
     hyperparameter) with identical structure, MLPs as internal edge and node 
     update functions, and either shared or unshared parameters. We use GNs 
@@ -294,7 +300,8 @@ class Processor(MessagePassing):
 
 
 class Decoder(nn.Module):
-  """The Decoder: :math: `\mathcal{G} \rightarrow \mathcal{Y}` extracts the 
+  r"""
+  The Decoder: :math: `\mathcal{G} \rightarrow \mathcal{Y}` extracts the 
   dynamics information from the nodes of the final latent graph, 
   :math: `y_i = \delta v (v_i^M)`
 
@@ -306,7 +313,8 @@ class Decoder(nn.Module):
           nnode_out: int,
           nmlp_layers: int,
           mlp_hidden_dim: int):
-    """The Decoder coder's learned function, :math: `\detla v`, is an MLP. 
+    r"""
+    The Decoder coder's learned function, :math: `\detla v`, is an MLP. 
     After the Decoder, the future position and velocity are updated using an 
     Euler integrator, so the :math: `yi` corresponds to accelerations, 
     :math: `\"{p}_i`, with 2D or 3D dimension, depending on the physical domain.
