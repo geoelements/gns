@@ -628,7 +628,7 @@ def train(rank, cfg, world_size, device, verbose, use_dist):
                                 cfg,
                                 rank,
                                 device_id,
-                                use_dist
+                                use_dist,
                             )
                             writer.add_scalar("Loss/valid", valid_loss.item(), step)
 
@@ -699,7 +699,13 @@ def train(rank, cfg, world_size, device, verbose, use_dist):
             if cfg.training.validation_interval is not None:
                 sampled_valid_example = next(iter(valid_dl))
                 epoch_valid_loss = validation(
-                    simulator, sampled_valid_example, n_features, cfg, rank, device_id, use_dist
+                    simulator,
+                    sampled_valid_example,
+                    n_features,
+                    cfg,
+                    rank,
+                    device_id,
+                    use_dist,
                 )
                 if use_dist:
                     torch.distributed.reduce(
