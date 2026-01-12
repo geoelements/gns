@@ -253,12 +253,64 @@ class LearnedSimulator(nn.Module):
         new_position = most_recent_position + new_velocity  # * dt = 1
         return new_position
 
+    def _enforce_rigid_body_acceleration(
+            self,
+            predicted_acceleration: torch.tensor,
+            particle_types: torch.tensor,
+            rigid_particle_id: int,
+    ) -> torch.tensor:
+        """
+        Enforce that all rigid particles have the same acceleration (rigid body constraint).
+
+        This implements translational rigidity by averaging accelerations across all
+        rigid particles and assigning the same acceleration to each rigid particle.
+
+        Args:
+          predicted_acceleration: Predicted accelerations with shape (nparticles, dim).
+          particle_types: Particle types with shape (nparticles).
+          rigid_particle_id: The particle type ID for rigid particles.
+
+        Returns:
+          torch.tensor: Modified accelerations with rigid body constraint applied.
+        """
+        # Create a mask for rigid particles
+        rigid_mask = (particle_types == rigid_particle_id)  # shape: (nparticles,)
+
+        # If there are no rigid particles, return original accelerations
+        if rigid_mask.sum() == 0:
+            return predicted_acceleration
+
+        # Compute the average acceleration across all rigid particles
+        # rigid_mask needs to be expanded to match acceleration dimensions
+        rigid_mask_expanded = rigid_mask.unsqueeze(-1)  # shape: (nparticles, 1)
+
+        # Sum accelerations of rigid particles
+        rigid_acc_sum = (predicted_acceleration * rigid_mask_expanded).sum(dim=0, keepdim=True)
+
+        # Count rigid particles
+        num_rigid = rigid_mask.sum()
+
+        # Compute average acceleration
+        avg_rigid_acceleration = rigid_acc_sum / num_rigid  # shape: (1, dim)
+
+        # Replace all rigid particle accelerations with the average
+        # Use torch.where to conditionally replace
+        modified_acceleration = torch.where(
+            rigid_mask_expanded,
+            avg_rigid_acceleration.expand_as(predicted_acceleration),
+            predicted_acceleration
+        )
+
+        return modified_acceleration
+
     def predict_positions(
         self,
         current_positions: torch.tensor,
         nparticles_per_example: torch.tensor,
         particle_types: torch.tensor,
         material_property: torch.tensor = None,
+        rigid_particle_id: int = None,
+
     ) -> torch.tensor:
         """Predict position based on acceleration.
 
@@ -286,6 +338,13 @@ class LearnedSimulator(nn.Module):
         predicted_normalized_acceleration = self._encode_process_decode(
             node_features, edge_index, edge_features
         )
+
+        # Apply rigid body constraint if rigid_particle_id is provided
+        if rigid_particle_id is not None:
+            predicted_normalized_acceleration = self._enforce_rigid_body_acceleration(
+                predicted_normalized_acceleration, particle_types, rigid_particle_id
+            )
+
         next_positions = self._decoder_postprocessor(
             predicted_normalized_acceleration, current_positions
         )
@@ -299,6 +358,7 @@ class LearnedSimulator(nn.Module):
         nparticles_per_example: torch.tensor,
         particle_types: torch.tensor,
         material_property: torch.tensor = None,
+        rigid_particle_id: int = None,
     ):
         """Produces normalized and predicted acceleration targets.
 
@@ -338,6 +398,12 @@ class LearnedSimulator(nn.Module):
         predicted_normalized_acceleration = self._encode_process_decode(
             node_features, edge_index, edge_features
         )
+
+        # Apply rigid body constraint if rigid_particle_id is provided
+        if rigid_particle_id is not None:
+            predicted_normalized_acceleration = self._enforce_rigid_body_acceleration(
+                predicted_normalized_acceleration, particle_types, rigid_particle_id
+            )
 
         # Calculate the target acceleration, using an `adjusted_next_position `that
         # is shifted by the noise in the last input position.

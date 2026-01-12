@@ -63,6 +63,7 @@ def rollout(
             nparticles_per_example=[n_particles_per_example],
             particle_types=particle_types,
             material_property=material_property,
+            rigid_particle_id=cfg.data.rigid_particle_id,
         )
 
         # Update kinematic particles from prescribed trajectory.
@@ -202,7 +203,7 @@ def predict(device: str, cfg: DictConfig):
                 example_rollout["loss"] = loss.mean()
                 filename = f"{cfg.output.filename}_ex{example_i}.pkl"
                 filename_render = f"{cfg.output.filename}_ex{example_i}"
-                filename = os.path.join(cfg.output.path, f"{filename_render}.pkl")
+                filename = os.path.join(cfg.output.path, filename)
                 with open(filename, "wb") as f:
                     pickle.dump(example_rollout, f)
             if cfg.rendering.mode:
@@ -347,9 +348,11 @@ def setup_simulator_and_optimizer(cfg, metadata, rank, world_size, device, use_d
             rank,
         )
         if use_dist:
-            simulator = DDP(serial_simulator.to("cuda"), device_ids=[rank])
+            simulator = torch.compile(serial_simulator)
+            simulator = DDP(simulator.to("cuda"), device_ids=[rank])
         else:
-            simulator = serial_simulator.to("cuda")
+            simulator = torch.compile(serial_simulator)
+            simulator = simulator.to("cuda")
         optimizer = torch.optim.Adam(
             simulator.parameters(), lr=cfg.training.learning_rate.initial * world_size
         )
@@ -361,6 +364,7 @@ def setup_simulator_and_optimizer(cfg, metadata, rank, world_size, device, use_d
             cfg.data.noise_std,
             device,
         )
+        simulator = torch.compile(simulator)   
         optimizer = torch.optim.Adam(
             simulator.parameters(), lr=cfg.training.learning_rate.initial * world_size
         )
@@ -612,6 +616,7 @@ def train(rank, cfg, world_size, device, verbose, use_dist):
                             if n_features == 3
                             else None
                         ),
+                        rigid_particle_id=cfg.data.rigid_particle_id,
                     )
 
                     if (
