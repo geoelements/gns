@@ -63,6 +63,7 @@ def rollout(
             nparticles_per_example=[n_particles_per_example],
             particle_types=particle_types,
             material_property=material_property,
+            rigid_particle_id=cfg.data.rigid_particle_id,
         )
 
         # Update kinematic particles from prescribed trajectory.
@@ -615,6 +616,7 @@ def train(rank, cfg, world_size, device, verbose, use_dist):
                             if n_features == 3
                             else None
                         ),
+                        rigid_particle_id=cfg.data.rigid_particle_id,
                     )
 
                     if (
