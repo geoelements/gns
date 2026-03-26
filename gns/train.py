@@ -19,15 +19,28 @@ from gns import learned_simulator
 from gns import noise_utils
 from gns import reading_utils
 from gns import data_loader
-from gns import distribute
+
+import torch
+import torch.distributed as dist
+import torchvision.models as models
+from torch.utils import collect_env
+from torch.utils.data.distributed import DistributedSampler
 
 import datetime
 import time
 
+from typing import List
+
+from physicsnemo.distributed import (
+    DistributedManager,
+    mark_module_as_shared,
+    ProcessGroupConfig,
+    ProcessGroupNode,
+)
+
 flags.DEFINE_enum(
     'mode', 'train', ['train', 'valid', 'rollout'],
     help='Train model, validation or rollout evaluation.')
-flags.DEFINE_integer('batch_size', 2, help='The batch size.')
 flags.DEFINE_float('noise_std', 6.7e-4, help='The std deviation of the noise.')
 flags.DEFINE_string('data_path', None, help='The dataset directory.')
 flags.DEFINE_string('model_path', 'models/', help=('The path for saving checkpoints of the model.'))
@@ -37,6 +50,7 @@ flags.DEFINE_string('model_file', None, help=('Model filename (.pt) to resume fr
 flags.DEFINE_string('train_state_file', 'train_state.pt', help=('Train state filename (.pt) to resume from. Can also use "latest" to default to newest file.'))
 
 flags.DEFINE_integer('ntraining_steps', int(2E7), help='Number of training steps.')
+flags.DEFINE_integer('validation_interval', None, help='Validation interval. Set `None` if validation loss is not needed')
 flags.DEFINE_integer('nsave_steps', int(5000), help='Number of steps at which to save the model.')
 
 # Learning rate parameters
@@ -45,9 +59,21 @@ flags.DEFINE_float('lr_decay', 0.1, help='Learning rate decay.')
 flags.DEFINE_integer('lr_decay_steps', int(5e6), help='Learning rate decay steps.')
 
 flags.DEFINE_integer("cuda_device_number", None, help="CUDA device (zero indexed), default is None so default CUDA device will be used.")
-flags.DEFINE_integer("n_gpus", 1, help="The number of GPUs to utilize for training")
+
+# Argument for multinode training
+flags.DEFINE_integer("local-rank", 0, help='local rank for distributed training')
+
+# Parameter for MLP
+flags.DEFINE_integer('mlp_hidden_dim', 128, help="Latent dimension for MLP")
+
+# Parameters for model
+flags.DEFINE_integer('latent_dim', 128, help="Latent dimension for model")
+flags.DEFINE_integer('nmlp_layers', 1, help="MLP layers")
+
+flags.DEFINE_boolean('verbose', False, 'Verbose.')
 
 FLAGS = flags.FLAGS
+
 
 Stats = collections.namedtuple('Stats', ['mean', 'std'])
 
@@ -62,7 +88,8 @@ def rollout(
         material_property: torch.tensor,
         n_particles_per_example: torch.tensor,
         nsteps: int,
-        device: torch.device):
+        device: torch.device,
+        partition_group_name: str):
   """
   Rolls out a trajectory by applying the model in sequence.
 
@@ -88,7 +115,8 @@ def rollout(
         current_positions,
         nparticles_per_example=[n_particles_per_example],
         particle_types=particle_types,
-        material_property=material_property
+        partition_group_name=partition_group_name,
+        material_property=material_property,
     )
 
     # Update kinematic particles from prescribed trajectory.
@@ -121,7 +149,7 @@ def rollout(
   return output_dict, loss
 
 
-def predict(device: str):
+def predict(dist_manager, flags, partition_group_name):
   """Predict rollouts.
 
   Args:
@@ -130,7 +158,8 @@ def predict(device: str):
   """
   # Read metadata
   metadata = reading_utils.read_metadata(FLAGS.data_path, "rollout")
-  simulator = _get_simulator(metadata, FLAGS.noise_std, FLAGS.noise_std, device)
+  mlp_hidden_dim = flags['mlp_hidden_dim']
+  simulator = _get_simulator(metadata, FLAGS.noise_std, FLAGS.noise_std, dist_manager).to(dist_manager.device)
 
   # Load simulator
   if os.path.exists(FLAGS.model_path + FLAGS.model_file):
@@ -138,7 +167,6 @@ def predict(device: str):
   else:
     raise Exception(f"Model does not exist at {FLAGS.model_path + FLAGS.model_file}")
 
-  simulator.to(device)
   simulator.eval()
 
   # Output path
@@ -161,8 +189,7 @@ def predict(device: str):
   eval_loss = []
   with torch.no_grad():
     for example_i, features in enumerate(ds):
-      print(f"processing example number {example_i}")
-      positions = features[0].to(device)
+      positions = features[0].to(dist_manager.device)
       if metadata['sequence_length'] is not None:
         # If `sequence_length` is predefined in metadata,
         nsteps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
@@ -170,13 +197,13 @@ def predict(device: str):
         # If no predefined `sequence_length`, then get the sequence length
         sequence_length = positions.shape[1]
         nsteps = sequence_length - INPUT_SEQUENCE_LENGTH
-      particle_type = features[1].to(device)
+      particle_type = features[1].to(dist_manager.device)
       if material_property_as_feature:
-        material_property = features[2].to(device)
-        n_particles_per_example = torch.tensor([int(features[3])], dtype=torch.int32).to(device)
+        material_property = features[2].to(dist_manager.device)
+        n_particles_per_example = torch.tensor([int(features[3])], dtype=torch.int32).to(dist_manager.device)
       else:
         material_property = None
-        n_particles_per_example = torch.tensor([int(features[2])], dtype=torch.int32).to(device)
+        n_particles_per_example = torch.tensor([int(features[2])], dtype=torch.int32).to(dist_manager.device)
 
       # Predict example rollout
       example_rollout, loss = rollout(simulator,
@@ -185,23 +212,305 @@ def predict(device: str):
                                       material_property,
                                       n_particles_per_example,
                                       nsteps,
-                                      device)
+                                      dist_manager.device,
+                                      partition_group_name,)
 
       example_rollout['metadata'] = metadata
-      print("Predicting example {} loss: {}".format(example_i, loss.mean()))
-      eval_loss.append(torch.flatten(loss))
+      if flags.verbose:
+        print("Predicting example {} loss: {}".format(example_i, loss.mean()))
+        eval_loss.append(torch.flatten(loss))
 
-      # Save rollout in testing
-      if FLAGS.mode == 'rollout':
-        example_rollout['metadata'] = metadata
-        example_rollout['loss'] = loss.mean()
-        filename = f'{FLAGS.output_filename}_ex{example_i}.pkl'
-        filename = os.path.join(FLAGS.output_path, filename)
-        with open(filename, 'wb') as f:
-          pickle.dump(example_rollout, f)
-
-  print("Mean loss on rollout prediction: {}".format(
+        # Save rollout in testing
+        if FLAGS.mode == 'rollout':
+          example_rollout['metadata'] = metadata
+          example_rollout['loss'] = loss.mean()
+          filename = f'{FLAGS.output_filename}_ex{example_i}.pkl'
+          filename = os.path.join(FLAGS.output_path, filename)
+          with open(filename, 'wb') as f:
+            pickle.dump(example_rollout, f)
+  if flags.verbose:
+    print("Mean loss on rollout prediction: {}".format(
       torch.mean(torch.cat(eval_loss))))
+
+
+def acceleration_loss(pred_acc, target_acc, non_kinematic_mask):
+  """
+  Compute the loss between predicted and target accelerations.
+
+  Args:
+    pred_acc: Predicted accelerations.
+    target_acc: Target accelerations.
+    non_kinematic_mask: Mask for kinematic particles.
+  """
+  loss = (pred_acc - target_acc) ** 2
+  loss = loss.sum(dim=-1)
+  num_non_kinematic = non_kinematic_mask.sum()
+  loss = torch.where(non_kinematic_mask.bool(),
+                    loss, torch.zeros_like(loss))
+  loss = loss.sum() / num_non_kinematic
+  return loss
+
+def save_model_and_train_state(verbose, device, simulator, flags, step, epoch, optimizer,
+                                train_loss, valid_loss, train_loss_hist, valid_loss_hist,
+                                epoch_train_loss):
+  """Save model state
+  
+  Args:
+    verbose: is main rank or cpu
+    device: torch device type
+    simulator: Trained simulator if not will undergo training.
+    flags: flags
+    step: step
+    epoch: epoch
+    optimizer: optimizer
+    train_loss: training loss at current step
+    valid_loss: validation loss at current step
+    train_loss_hist: training loss history at each epoch
+    valid_loss_hist: validation loss history at each epoch
+  """
+  if verbose:
+    base_simulator = getattr(simulator, "module", simulator)
+    base_simulator.save(flags["model_path"] + 'model-' + str(step) + '.mdlus')
+
+    train_state = dict(optimizer_state=optimizer.state_dict(),
+                        global_train_state={
+                          "step": step, 
+                          "epoch": epoch,
+                          "train_loss": train_loss,
+                          "valid_loss": valid_loss,
+                          "epoch_train_loss": epoch_train_loss,
+                          },
+                        loss_history={"train": train_loss_hist, "valid": valid_loss_hist}
+                        )
+    torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
+
+def train(dist_manager, graph_partition_pg_name, flags, verbose):
+  """Train the model.
+
+  Args:
+    dist_manager: DistributedManager
+    verbose: gloabl rank 0 or cpu
+  """
+  # Read metadata
+  metadata = reading_utils.read_metadata(flags["data_path"], "train")
+
+  # Get simulator and optimizer
+  simulator = _get_simulator(
+    metadata, flags["noise_std"], 
+    flags["noise_std"], 
+    dist_manager).to(dist_manager.device)
+  if dist_manager.distributed and dist_manager.group_size("data_parallel") > 1:
+    simulator = DDP(
+      simulator, 
+      process_group=dist_manager.group("data_parallel"),
+      device_ids=[dist_manager.local_rank],
+      output_device=dist_manager.device,
+    )
+  if (
+    dist_manager.distributed
+    and dist_manager.group_size(graph_partition_pg_name) > 1
+  ):
+    mark_module_as_shared(simulator, graph_partition_pg_name)
+  try:
+    dp_group_size = dist_manager.group_size("data_parallel")
+  except:
+    dp_group_size = 1
+  optimizer = torch.optim.Adam(simulator.parameters(), lr=flags["lr_init"]*dp_group_size)
+
+ 
+  # Initialize training state
+  step = 0
+  epoch = 0
+
+  valid_loss = None
+  epoch_train_loss = 0
+  epoch_valid_loss = None
+
+  train_loss_hist = []
+  valid_loss_hist = []
+  if (
+    dist_manager.distributed
+    and dist_manager.group_size(graph_partition_pg_name) > 1
+  ):
+    mp_rank = (dist_manager.group_rank("model_parallel"))
+  else:
+    mp_rank = 0
+  if dist_manager.distributed and dist_manager.group_size("data_parallel") > 1:
+    dp_rank = dist_manager.group_rank("data_parallel")
+  else:
+    dp_rank = 0
+
+  # If model_path does exist and model_file and train_state_file exist continue training.
+  if flags["model_file"] is not None:
+    simulator, optimizer, step, epoch, train_loss_hist, valid_loss_hist, epoch_train_loss = _get_checkpoint(simulator, dist_manager, flags)
+
+  simulator.train()
+
+  # Get data loader
+  path=f'{flags["data_path"]}train.npz'
+  input_length_sequence=INPUT_SEQUENCE_LENGTH
+  dl = data_loader.get_data_loader_by_samples(
+          path,
+          input_length_sequence,
+          dist_manager,
+          dp_rank,
+          )
+  n_features = len(dl.dataset._data[0])
+
+  # Load validation data
+  if flags["validation_interval"] is not None:
+
+    path=f'{flags["data_path"]}valid.npz'
+    input_length_sequence=INPUT_SEQUENCE_LENGTH
+    dl_valid = data_loader.get_data_loader_by_samples(
+          path,
+          input_length_sequence,
+          dist_manager,
+          dp_rank,
+          )
+    if len(dl_valid.dataset._data[0]) != n_features:
+      raise ValueError(
+        f"`n_features` of `valid.npz` and `train.npz` should be the same"
+      )
+      
+  start = time.time()
+  try:
+    while step < flags["ntraining_steps"]:
+      torch.distributed.barrier()
+      cur_step = step % len(dl)
+      for example in dl: 
+        # ((position, particle_type, material_property, n_particles_per_example), labels) are in dl
+        position = example[0][0].to(dist_manager.device)
+        particle_type = example[0][1].to(dist_manager.device)
+        if n_features == 3:  # if dl includes material_property
+          material_property = example[0][2].to(dist_manager.device)
+          n_particles_per_example = example[0][3].to(dist_manager.device)
+        elif n_features == 2:
+          n_particles_per_example = example[0][2].to(dist_manager.device)
+        else:
+          raise NotImplementedError
+        labels = example[1].to(dist_manager.device)
+        n_particles_per_example.to(dist_manager.device)
+        labels.to(dist_manager.device)
+        # Sample the noise to add to the inputs to the model during training.
+        sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(position, 
+                noise_std_last_step=flags["noise_std"]).to(dist_manager.device)
+        non_kinematic_mask = (particle_type != KINEMATIC_PARTICLE_ID).clone().detach().to(dist_manager.device)
+        sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
+
+        # Get the predictions and target acceleration
+        base_simulator = getattr(simulator, "module", simulator)
+        
+        pred_acc, target_acc = base_simulator.predict_accelerations(
+            next_positions=labels.to(dist_manager.device),
+            position_sequence_noise=sampled_noise.to(dist_manager.device),
+            position_sequence=position.to(dist_manager.device),
+            nparticles_per_example=n_particles_per_example.to(dist_manager.device),
+            particle_types=particle_type.to(dist_manager.device),
+            partition_group_name = graph_partition_pg_name,
+            material_property=material_property.to(dist_manager.device) if n_features == 3 else None
+        )
+        # Validation
+        if (
+          flags["validation_interval"] is not None 
+          and step > 0 
+          and step % flags["validation_interval"] == 0 
+        ):
+          sampled_valid_example = next(iter(dl_valid))
+          valid_loss = validation(
+            simulator, sampled_valid_example, n_features, flags, dist_manager, graph_partition_pg_name)
+          if verbose:
+            print(f"Validation loss at {step}: {valid_loss.item()}")
+
+        # Calculate the loss and mask out loss on kinematic particles
+        loss = acceleration_loss(pred_acc, target_acc, non_kinematic_mask)
+        train_loss = loss.detach().item()
+        epoch_train_loss += train_loss
+        # Computes the gradient of loss
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        # Update learning rate
+        lr_new = flags["lr_init"] * (flags["lr_decay"] ** (step/flags["lr_decay_steps"])) * dp_group_size 
+        for param in optimizer.param_groups:
+          param['lr'] = lr_new
+
+        if verbose:
+          print(f'Training step: {step}/{flags["ntraining_steps"]}. Loss: {loss}.',flush=True)
+          if step % 1000 == 0:
+            print( '\nTraining time: {}'.format(
+                  datetime.timedelta(seconds=time.time() - start),
+              ),
+              )
+            start = time.time()
+
+        step += 1
+        cur_step += 1
+        # Save model state
+        if verbose and step % flags["nsave_steps"] == 0:
+          save_model_and_train_state(verbose, torch.device("cuda"), \
+            simulator, flags, step, epoch, \
+            optimizer, train_loss, valid_loss, train_loss_hist, \
+            valid_loss_hist, epoch_train_loss)
+        if step >= flags["ntraining_steps"]:
+          break
+        if cur_step % len(dl) == 0:
+          break
+
+      # Epoch level statistics
+      # Training loss at epoch
+      step_this_epoch = len(dl) if (step != flags["ntraining_steps"]) else (step % len(dl))
+      if step_this_epoch == 0:
+        step_this_epoch = len(dl)
+      epoch_train_loss /= step_this_epoch
+      if verbose: 
+        train_loss_hist.append((epoch, epoch_train_loss))
+
+      # Validation loss at epoch
+      if flags["validation_interval"] is not None:
+        sampled_valid_example = next(iter(dl_valid))
+        epoch_valid_loss = validation(
+                simulator, 
+                sampled_valid_example, 
+                n_features, flags,
+                dist_manager,
+                graph_partition_pg_name,)
+        if verbose:
+          valid_loss_hist.append((epoch, epoch_valid_loss))
+
+      # Print epoch statistics
+      if verbose:
+        print(f'Epoch {epoch}, training loss: {epoch_train_loss}')
+        if flags["validation_interval"] is not None:
+          print(f'Epoch {epoch}, validation loss: {epoch_valid_loss}')
+      
+      # Reset epoch training loss
+      epoch_train_loss = 0
+      if cur_step >= len(dl):
+        epoch += 1
+      cur_step = 0
+      
+      if step >= flags["ntraining_steps"]:
+        break
+
+  except KeyboardInterrupt:
+    pass
+
+  # Save model state on keyboard interrupt
+  save_model_and_train_state(verbose, torch.device("cuda"), \
+    simulator, flags, step, epoch, \
+    optimizer, train_loss, valid_loss, train_loss_hist, valid_loss_hist, \
+    epoch_train_loss)
+
+  
+  with open("log/valid_loss_hist.txt", "w") as f:
+    for epoch, loss in valid_loss_hist:
+      f.write(f"{loss}\n")
+
+
+  if DistributedManager().distributed:
+    DistributedManager.cleanup()
 
 def optimizer_to(optim, device):
   for param in optim.state.values():
@@ -217,219 +526,69 @@ def optimizer_to(optim, device):
           if subparam._grad is not None:
             subparam._grad.data = subparam._grad.data.to(device)
 
-def train(rank, flags, world_size, device):
-  """Train the model.
+def _get_checkpoint(simulator, dist_manager, flags):
+  if flags["model_file"] == "latest" and flags["train_state_file"] == "latest":
+    # find the latest model, assumes model and train_state files are in step.
+    fnames = glob.glob(f'{flags["model_path"]}*model*mdlus')
+    max_model_number = 0
+    expr = re.compile(r".*model-(\d+).mdlus")
+    for fname in fnames:
+      model_num = int(expr.search(fname).groups()[0])
+      if model_num > max_model_number:
+        max_model_number = model_num
+    # reset names to point to the latest.
+    flags["model_file"] = f"model-{max_model_number}.mdlus"
+    flags["train_state_file"] = f"train_state-{max_model_number}.pt"
 
-  Args:
-    rank: local rank
-    world_size: total number of ranks
-    device: torch device type
-  """
-  if device == torch.device("cuda"):
-    distribute.setup(rank, world_size, device)
-    device_id = rank
+  if os.path.exists(flags["model_path"] + flags["model_file"]) and os.path.exists(flags["model_path"] + flags["train_state_file"]):
+    # load model
+    base_simulator = getattr(simulator, "module", simulator)
+    base_simulator.load(flags["model_path"] + flags["model_file"], map_location=dist_manager.device)
+
+    # load train state
+    train_state = torch.load(flags["model_path"] + flags["train_state_file"])
+    # set optimizer state
+    optimizer = torch.optim.Adam(
+        base_simulator.parameters())
+    optimizer.load_state_dict(train_state["optimizer_state"])
+    optimizer_to(optimizer, dist_manager.device)
+    # set global train state
+    step = train_state["global_train_state"]["step"]
+    epoch = train_state["global_train_state"]["epoch"]
+    train_loss_hist = train_state["loss_history"]["train"]
+    valid_loss_hist = train_state["loss_history"]["valid"]
+    epoch_train_loss = train_state["global_train_state"]["epoch_train_loss"]
   else:
-    device_id = device
-
-  # Read metadata
-  metadata = reading_utils.read_metadata(flags["data_path"], "train")
-
-  # Get simulator and optimizer
-  if device == torch.device("cuda"):
-    serial_simulator = _get_simulator(metadata, flags["noise_std"], flags["noise_std"], rank)
-    simulator = DDP(serial_simulator.to(rank), device_ids=[rank], output_device=rank)
-    optimizer = torch.optim.Adam(simulator.parameters(), lr=flags["lr_init"]*world_size)
-  else:
-    simulator = _get_simulator(metadata, flags["noise_std"], flags["noise_std"], device)
-    optimizer = torch.optim.Adam(simulator.parameters(), lr=flags["lr_init"] * world_size)
-  step = 0
-
-  # If model_path does exist and model_file and train_state_file exist continue training.
-  if flags["model_file"] is not None:
-
-    if flags["model_file"] == "latest" and flags["train_state_file"] == "latest":
-      # find the latest model, assumes model and train_state files are in step.
-      fnames = glob.glob(f'{flags["model_path"]}*model*pt')
-      max_model_number = 0
-      expr = re.compile(".*model-(\d+).pt")
-      for fname in fnames:
-        model_num = int(expr.search(fname).groups()[0])
-        if model_num > max_model_number:
-          max_model_number = model_num
-      # reset names to point to the latest.
-      flags["model_file"] = f"model-{max_model_number}.pt"
-      flags["train_state_file"] = f"train_state-{max_model_number}.pt"
-
-    if os.path.exists(flags["model_path"] + flags["model_file"]) and os.path.exists(flags["model_path"] + flags["train_state_file"]):
-      # load model
-      if device == torch.device("cuda"):
-        simulator.module.load(flags["model_path"] + flags["model_file"])
-      else:
-        simulator.load(flags["model_path"] + flags["model_file"])
-
-      # load train state
-      train_state = torch.load(flags["model_path"] + flags["train_state_file"])
-      # set optimizer state
-      optimizer = torch.optim.Adam(
-        simulator.module.parameters() if device == torch.device("cuda") else simulator.parameters())
-      optimizer.load_state_dict(train_state["optimizer_state"])
-      optimizer_to(optimizer, device_id)
-      # set global train state
-      step = train_state["global_train_state"].pop("step")
-
-    else:
-      msg = f'Specified model_file {flags["model_path"] + flags["model_file"]} and train_state_file {flags["model_path"] + flags["train_state_file"]} not found.'
-      raise FileNotFoundError(msg)
-
-  simulator.train()
-  simulator.to(device_id)
-
-  if device == torch.device("cuda"):
-    dl = distribute.get_data_distributed_dataloader_by_samples(path=f'{flags["data_path"]}train.npz',
-                                                               input_length_sequence=INPUT_SEQUENCE_LENGTH,
-                                                               batch_size=flags["batch_size"])
-  else:
-    dl = data_loader.get_data_loader_by_samples(path=f'{flags["data_path"]}train.npz',
-                                                input_length_sequence=INPUT_SEQUENCE_LENGTH,
-                                                batch_size=flags["batch_size"])
-  n_features = len(dl.dataset._data[0])
-
-  print(f"rank = {rank}, cuda = {torch.cuda.is_available()}")
-  not_reached_nsteps = True
-  start = time.time()
-  try:
-    while not_reached_nsteps:
-      if device == torch.device("cuda"):
-        torch.distributed.barrier()
-      else:
-        pass
-      for example in dl:  # ((position, particle_type, material_property, n_particles_per_example), labels) are in dl
-        position = example[0][0].to(device_id)
-        particle_type = example[0][1].to(device_id)
-        if n_features == 3:  # if dl includes material_property
-          material_property = example[0][2].to(device_id)
-          n_particles_per_example = example[0][3].to(device_id)
-        elif n_features == 2:
-          n_particles_per_example = example[0][2].to(device_id)
-        else:
-          raise NotImplementedError
-        labels = example[1].to(device_id)
-
-        n_particles_per_example.to(device_id)
-        labels.to(device_id)
-
-        # TODO (jpv): Move noise addition to data_loader
-        # Sample the noise to add to the inputs to the model during training.
-        sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(position, noise_std_last_step=flags["noise_std"]).to(device_id)
-        non_kinematic_mask = (particle_type != KINEMATIC_PARTICLE_ID).clone().detach().to(device_id)
-        sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
-
-        # Get the predictions and target accelerations.
-        if device == torch.device("cuda"):
-          pred_acc, target_acc = simulator.module.predict_accelerations(
-            next_positions=labels.to(rank),
-            position_sequence_noise=sampled_noise.to(rank),
-            position_sequence=position.to(rank),
-            nparticles_per_example=n_particles_per_example.to(rank),
-            particle_types=particle_type.to(rank),
-            material_property=material_property.to(rank) if n_features == 3 else None
-          )
-        else:
-          pred_acc, target_acc = simulator.predict_accelerations(
-            next_positions=labels.to(device),
-            position_sequence_noise=sampled_noise.to(device),
-            position_sequence=position.to(device),
-            nparticles_per_example=n_particles_per_example.to(device),
-            particle_types=particle_type.to(device),
-            material_property=material_property.to(rank) if n_features == 3 else None
-          )
-
-        # Calculate the loss and mask out loss on kinematic particles
-        loss = (pred_acc - target_acc) ** 2
-        loss = loss.sum(dim=-1)
-        num_non_kinematic = non_kinematic_mask.sum()
-        loss = torch.where(non_kinematic_mask.bool(),
-                         loss, torch.zeros_like(loss))
-        loss = loss.sum() / num_non_kinematic
-
-        # Computes the gradient of loss
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        # Update learning rate
-        lr_new = flags["lr_init"] * (flags["lr_decay"] ** (step/flags["lr_decay_steps"])) * world_size
-        for param in optimizer.param_groups:
-          param['lr'] = lr_new
-
-        if rank == 0 or device == torch.device("cpu"):
-          #print(f'Training step: {step}/{flags["ntraining_steps"]}. Loss: {loss}.',flush=True)
-          if step % 1000 == 0:
-            print( '\nTraining time: {}'.format(
-                  datetime.timedelta(seconds=time.time() - start),
-              ),
-              )
-            start = time.time()
-          # Save model state
-          if step % flags["nsave_steps"] == 0:
-            if device == torch.device("cpu"):
-              simulator.save(flags["model_path"] + 'model-'+str(step)+'.pt')
-            else:
-              simulator.module.save(flags["model_path"] + 'model-'+str(step)+'.pt')
-            train_state = dict(optimizer_state=optimizer.state_dict(),
-                               global_train_state={"step": step},
-                               loss=loss.item())
-            torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
-
-        # Complete training
-        if (step >= flags["ntraining_steps"]):
-          not_reached_nsteps = False
-          break
-
-        step += 1
-
-  except KeyboardInterrupt:
-    pass
-
-  if rank == 0 or device == torch.device("cpu"):
-    if device == torch.device("cpu"):
-      simulator.save(flags["model_path"] + 'model-'+str(step)+'.pt')
-    else:
-      simulator.module.save(flags["model_path"] + 'model-'+str(step)+'.pt')
-    train_state = dict(optimizer_state=optimizer.state_dict(),
-                       global_train_state={"step": step},
-                       loss=loss.item())
-    torch.save(train_state, f'{flags["model_path"]}train_state-{step}.pt')
-
-  if torch.cuda.is_available():
-    distribute.cleanup()
-
+    msg = f'Specified model_file {flags["model_path"] + flags["model_file"]} and train_state_file {flags["model_path"] + flags["train_state_file"]} not found.'
+    raise FileNotFoundError(msg)
+  
+  return simulator, optimizer, step, epoch, train_loss_hist, valid_loss_hist, epoch_train_loss
 
 def _get_simulator(
         metadata: json,
         acc_noise_std: float,
         vel_noise_std: float,
-        device: torch.device) -> learned_simulator.LearnedSimulator:
+        dist_manager: DistributedManager,
+        ) -> learned_simulator.LearnedSimulator:
   """Instantiates the simulator.
 
   Args:
     metadata: JSON object with metadata.
     acc_noise_std: Acceleration noise std deviation.
     vel_noise_std: Velocity noise std deviation.
-    device: PyTorch device 'cpu' or 'cuda'.
   """
 
   # Normalization stats
   normalization_stats = {
       'acceleration': {
-          'mean': torch.FloatTensor(metadata['acc_mean']).to(device),
-          'std': torch.sqrt(torch.FloatTensor(metadata['acc_std'])**2 +
-                            acc_noise_std**2).to(device),
+          'mean': metadata['acc_mean'], 
+          'std': metadata['acc_std'], 
+          'noise': acc_noise_std, 
       },
       'velocity': {
-          'mean': torch.FloatTensor(metadata['vel_mean']).to(device),
-          'std': torch.sqrt(torch.FloatTensor(metadata['vel_std'])**2 +
-                            vel_noise_std**2).to(device),
+          'mean': metadata['vel_mean'],
+          'std': metadata['vel_std'], 
+          'noise': vel_noise_std,
       },
   }
 
@@ -448,70 +607,119 @@ def _get_simulator(
       particle_dimensions=metadata['dim'],
       nnode_in=nnode_in,
       nedge_in=nedge_in,
-      latent_dim=128,
+      latent_dim=FLAGS.latent_dim,
       nmessage_passing_steps=10,
-      nmlp_layers=2,
-      mlp_hidden_dim=128,
+      nmlp_layers=FLAGS.nmlp_layers,
+      mlp_hidden_dim=FLAGS.mlp_hidden_dim,
       connectivity_radius=metadata['default_connectivity_radius'],
-      boundaries=np.array(metadata['bounds']),
+      boundaries=np.array(metadata['bounds']).tolist(),
       normalization_stats=normalization_stats,
       nparticle_types=NUM_PARTICLE_TYPES,
       particle_type_embedding_size=16,
       boundary_clamp_limit=metadata["boundary_augment"] if "boundary_augment" in metadata else 1.0,
-      device=device)
-
+      device=str(dist_manager.device),
+    )
   return simulator
 
+def validation(
+        simulator,
+        example,
+        n_features,
+        flags,
+        dist_manager,
+        partition_group_name,
+        ):
+
+  position = example[0][0].to(dist_manager.device)
+  particle_type = example[0][1].to(dist_manager.device)
+  if n_features == 3:  # if dl includes material_property
+    material_property = example[0][2].to(dist_manager.device)
+    n_particles_per_example = example[0][3].to(dist_manager.device)
+  elif n_features == 2:
+    n_particles_per_example = example[0][2].to(dist_manager.device)
+  else:
+    raise NotImplementedError
+  labels = example[1].to(dist_manager.device)
+
+  # Sample the noise to add to the inputs.
+  sampled_noise = noise_utils.get_random_walk_noise_for_position_sequence(
+    position, noise_std_last_step=flags["noise_std"]).to(dist_manager.device)
+  non_kinematic_mask = (particle_type != KINEMATIC_PARTICLE_ID).clone().detach().to(dist_manager.device)
+  sampled_noise *= non_kinematic_mask.view(-1, 1, 1)
+
+  # Do evaluation for the validation data
+  base_simulator = getattr(simulator, "module", simulator)
+  predict_accelerations = base_simulator.predict_accelerations
+  # Get the predictions and target accelerations
+  with torch.no_grad():
+      pred_acc, target_acc = predict_accelerations(
+          next_positions=labels.to(dist_manager.device),
+          position_sequence_noise=sampled_noise.to(dist_manager.device),
+          position_sequence=position.to(dist_manager.device),
+          nparticles_per_example=n_particles_per_example.to(dist_manager.device),
+          particle_types=particle_type.to(dist_manager.device),
+          material_property=material_property.to(dist_manager.device) if n_features == 3 else None,
+          partition_group_name = partition_group_name,
+      )
+
+  # Compute loss
+  loss = acceleration_loss(pred_acc, target_acc, non_kinematic_mask)
+
+  return loss
 
 def main(_):
   """Train or evaluates the model.
 
   """
-  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-  if device == torch.device('cuda'):
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "29500"
-
+  seed = 0
+  torch.manual_seed(seed)
+  torch.cuda.manual_seed(seed)
+  torch.cuda.manual_seed_all(seed)
+  
   myflags = reading_utils.flags_to_dict(FLAGS)
+
+  DistributedManager.initialize()
+  if DistributedManager().distributed:
+    graph_partition_pg_name = "model_parallel"
+    world_size = torch.distributed.get_world_size()
+    # debug: change graph partition size so there is ddp
+    graph_partition_size = 3
+    if not world_size % graph_partition_size == 0:
+      raise ValueError(
+          f"Partition Size ({graph_partition_size}) must divide World Size ({world_size}) evenly."
+            )
+    world = ProcessGroupNode("world")
+    pg_config = ProcessGroupConfig(world)
+    pg_config.add_node(ProcessGroupNode("data_parallel"), parent=world)
+    pg_config.add_node(ProcessGroupNode("model_parallel"), parent=world)
+    pg_sizes = {
+      "model_parallel": graph_partition_size,
+      "data_parallel": world_size // graph_partition_size,
+    }
+    pg_config.set_leaf_group_sizes(pg_sizes)
+    DistributedManager.create_groups_from_config(
+      pg_config,
+      verbose=False,
+    )
+  else:
+    world_size = 1
+    graph_partition_size = 1
+    graph_partition_pg_name = None
+  dist_manager = DistributedManager()
+  FLAGS.verbose = dist_manager.rank == 0
 
   if FLAGS.mode == 'train':
     # If model_path does not exist create new directory.
     if not os.path.exists(FLAGS.model_path):
-      os.makedirs(FLAGS.model_path)
+      os.makedirs(FLAGS.model_path,exist_ok=True)
 
-    # Train on gpu 
-    if device == torch.device('cuda'):
-      available_gpus = torch.cuda.device_count()
-      print(f"Available GPUs = {available_gpus}")
+    train(dist_manager, graph_partition_pg_name, myflags, FLAGS.verbose)
 
-      # Set the number of GPUs based on availability and the specified number
-      if FLAGS.n_gpus is None or FLAGS.n_gpus > available_gpus:
-        world_size = available_gpus
-        if FLAGS.n_gpus is not None:
-          print(f"Warning: The number of GPUs specified ({FLAGS.n_gpus}) exceeds the available GPUs ({available_gpus})")
-      else:
-        world_size = FLAGS.n_gpus
-
-      # Print the status of GPU usage
-      print(f"Using {world_size}/{available_gpus} GPUs")
-
-      # Spawn training to GPUs
-      distribute.spawn_train(train, myflags, world_size, device)
-
-    # Train on cpu  
-    else:
-      rank = None
-      world_size = 1
-      train(rank, myflags, world_size, device)
 
   elif FLAGS.mode in ['valid', 'rollout']:
-    # Set device
-    world_size = torch.cuda.device_count()
-    if FLAGS.cuda_device_number is not None and torch.cuda.is_available():
-      device = torch.device(f'cuda:{int(FLAGS.cuda_device_number)}')
-    #test code
-    print(f"device is {device} world size is {world_size}")
-    predict(device)
+    predict(dist_manager, myflags, graph_partition_pg_name)
+
+  
 
 
 if __name__ == '__main__':

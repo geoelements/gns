@@ -2,13 +2,40 @@ import torch
 import torch.nn as nn
 import numpy as np
 from gns import graph_network
-from gns import graph_network_kan
 from torch_geometric.nn import radius_graph
 from typing import Dict
 from typing import List
+import torch_geometric as pyg
+import dgl
+from physicsnemo.distributed import (
+    DistributedManager,
+    mark_module_as_shared,
+    ProcessGroupConfig,
+    ProcessGroupNode,
+)
+from physicsnemo.models.module import Module
+from physicsnemo.models.meta import ModelMetaData
+from dataclasses import dataclass
+from physicsnemo.models.gnn_layers.utils import CuGraphCSC
 
+@dataclass
+class MetaData(ModelMetaData):
+    name: str = "LearnedSimulator"
+    # Optimization
+    jit: bool = False
+    cuda_graphs: bool = False
+    amp_cpu: bool = False
+    amp_gpu: bool = True
+    torch_fx: bool = False
+    # Data type
+    bf16: bool = True
+    # Inference
+    onnx: bool = False
+    # Physics informed
+    func_torch: bool = False
+    auto_grad: bool = False
 
-class LearnedSimulator(nn.Module):
+class LearnedSimulator(Module):
   """Learned simulator from https://arxiv.org/pdf/2002.09405.pdf."""
 
   def __init__(
@@ -21,14 +48,12 @@ class LearnedSimulator(nn.Module):
           nmlp_layers: int,
           mlp_hidden_dim: int,
           connectivity_radius: float,
-          boundaries: np.ndarray,
+          boundaries: list[tuple[float, float]],
           normalization_stats: dict,
           nparticle_types: int,
           particle_type_embedding_size: int,
-          use_kan: int,
-          kan_hidden_dim: int,
           boundary_clamp_limit: float = 1.0,
-          device="cpu",
+          device: str = None,
   ):
     """Initializes the model.
 
@@ -40,7 +65,7 @@ class LearnedSimulator(nn.Module):
       nmessage_passing_steps: Number of message passing steps.
       nmlp_layers: Number of hidden layers in the MLP (typically of size 2).
       connectivity_radius: Scalar with the radius of connectivity.
-      boundaries: Array of 2-tuples, containing the lower and upper boundaries
+      boundaries: List of 2-tuples, containing the lower and upper boundaries
         of the cuboid containing the particles along each dimensions, matching
         the dimensionality of the problem.
       normalization_stats: Dictionary with statistics with keys "acceleration"
@@ -53,10 +78,22 @@ class LearnedSimulator(nn.Module):
       device: Runtime device (cuda or cpu).
 
     """
-    super(LearnedSimulator, self).__init__()
+    super().__init__(meta=MetaData())
     self._boundaries = boundaries
     self._connectivity_radius = connectivity_radius
-    self._normalization_stats = normalization_stats
+    device = torch.device(device)
+    self._normalization_stats =  {
+      'acceleration': {
+          'mean': torch.FloatTensor(normalization_stats['acceleration']['mean']).to(device),
+          'std': torch.sqrt(torch.FloatTensor(normalization_stats['acceleration']['std'])**2 \
+                  + normalization_stats['acceleration']['noise']**2).to(device),
+      },
+      'velocity': {
+          'mean': torch.FloatTensor(normalization_stats['velocity']['mean']).to(device),
+          'std': torch.sqrt(torch.FloatTensor(normalization_stats['velocity']['std'])**2 \
+                  + normalization_stats['velocity']['noise']**2).to(device),
+      },
+  }
     self._nparticle_types = nparticle_types
     self._boundary_clamp_limit = boundary_clamp_limit
 
@@ -65,28 +102,16 @@ class LearnedSimulator(nn.Module):
         nparticle_types, particle_type_embedding_size)
 
     # Initialize the EncodeProcessDecode
-    # self._encode_process_decode = graph_network.EncodeProcessDecode(
-    #     nnode_in_features=nnode_in,
-    #     nnode_out_features=particle_dimensions,
-    #     nedge_in_features=nedge_in,
-    #     latent_dim=latent_dim,
-    #     nmessage_passing_steps=nmessage_passing_steps,
-    #     nmlp_layers=nmlp_layers,
-    #     mlp_hidden_dim=mlp_hidden_dim)
-    self._encode_process_decode = graph_network_kan.EncodeProcessDecode(
-      nnode_in_features=nnode_in,
-      nnode_out_features=particle_dimensions,
-      nedge_in_features=nedge_in,
-      latent_dim=latent_dim,
-      nmessage_passing_steps=nmessage_passing_steps,
-      nmlp_layers=nmlp_layers,
-      mlp_hidden_dim=mlp_hidden_dim,
-      use_kan=use_kan,
-      kan_hidden_dim=kan_hidden_dim,
-      )
-
+    self._encode_process_decode = graph_network.EncodeProcessDecode(
+         nnode_in_features=nnode_in,
+         nnode_out_features=particle_dimensions,
+         nedge_in_features=nedge_in,
+         latent_dim=latent_dim,
+         nmessage_passing_steps=nmessage_passing_steps,
+         nmlp_layers=nmlp_layers,
+         mlp_hidden_dim=mlp_hidden_dim)
     self._device = device
-
+    
   def forward(self):
     """Forward hook runs on class instantiation"""
     pass
@@ -258,6 +283,7 @@ class LearnedSimulator(nn.Module):
           current_positions: torch.tensor,
           nparticles_per_example: torch.tensor,
           particle_types: torch.tensor,
+          partition_group_name: str,
           material_property: torch.tensor = None) -> torch.tensor:
     """Predict position based on acceleration.
 
@@ -277,8 +303,23 @@ class LearnedSimulator(nn.Module):
     else:
         node_features, edge_index, edge_features = self._encoder_preprocessor(
             current_positions, nparticles_per_example, particle_types)
+
+    graph = dgl.graph((edge_index[0], edge_index[1]), num_nodes=node_features.size(0))
+    graph.ndata['x'] = node_features
+    graph.edata['x'] = edge_features
+    ndata = graph.ndata['x']
+    edata = graph.edata['x']
+    graph, edge_perm = CuGraphCSC.from_dgl(
+        graph=graph,
+        partition_size=3,
+        partition_group_name=partition_group_name,
+        partition_by_bbox=False,
+    )
+    edata = edata[edge_perm]
+    edata = graph.get_edge_features_in_partition(edata)
+    ndata = graph.get_dst_node_features_in_partition(ndata)
     predicted_normalized_acceleration = self._encode_process_decode(
-        node_features, edge_index, edge_features)
+            ndata, edata, graph, get_on_all_ranks=True)
     next_positions = self._decoder_postprocessor(
         predicted_normalized_acceleration, current_positions)
     return next_positions
@@ -290,6 +331,7 @@ class LearnedSimulator(nn.Module):
           position_sequence: torch.tensor,
           nparticles_per_example: torch.tensor,
           particle_types: torch.tensor,
+          partition_group_name: str,
           material_property: torch.tensor = None):
     """Produces normalized and predicted acceleration targets.
 
@@ -321,9 +363,24 @@ class LearnedSimulator(nn.Module):
     else:
         node_features, edge_index, edge_features = self._encoder_preprocessor(
             noisy_position_sequence, nparticles_per_example, particle_types)
-    predicted_normalized_acceleration = self._encode_process_decode(
-        node_features, edge_index, edge_features)
-
+    
+        
+    graph = dgl.graph((edge_index[0], edge_index[1]), num_nodes=node_features.size(0))
+    graph.ndata['x'] = node_features
+    graph.edata['x'] = edge_features
+    ndata = graph.ndata['x']
+    edata = graph.edata['x']
+    torch.distributed.barrier()
+    graph, edge_perm = CuGraphCSC.from_dgl(
+        graph=graph,
+        partition_size=3,
+        partition_group_name=partition_group_name,
+        partition_by_bbox=False,
+    ) 
+    edata = edata[edge_perm]
+    edata = graph.get_edge_features_in_partition(edata)
+    ndata = graph.get_dst_node_features_in_partition(ndata)
+    predicted_normalized_acceleration = self._encode_process_decode(ndata, edata, graph)
     # Calculate the target acceleration, using an `adjusted_next_position `that
     # is shifted by the noise in the last input position.
     next_position_adjusted = next_positions + position_sequence_noise[:, -1]
@@ -366,25 +423,6 @@ class LearnedSimulator(nn.Module):
         acceleration - acceleration_stats['mean']) / acceleration_stats['std']
     return normalized_acceleration
 
-  def save(
-          self,
-          path: str = 'model.pt'):
-    """Save model state
-
-    Args:
-      path: Model path
-    """
-    torch.save(self.state_dict(), path)
-
-  def load(
-          self,
-          path: str):
-    """Load model state from file
-
-    Args:
-      path: Model path
-    """
-    self.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
 
 
 def time_diff(

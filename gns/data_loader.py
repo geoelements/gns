@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from torch.utils.data.distributed import DistributedSampler
 
 
 def load_npz_data(path):
@@ -49,6 +50,7 @@ class SamplesDataset(torch.utils.data.Dataset):
         # of the form (positions, particle_type)
         # convert to list of tuples
         # TODO: allow_pickle=True is potential security risk. See docs.
+
         self._data = load_npz_data(path)
         
         # length of each trajectory in the dataset
@@ -88,6 +90,7 @@ class SamplesDataset(torch.utils.data.Dataset):
         # Select the trajectory immediately before
         # the one that exceeds the idx
         # (i.e., the one in which idx resides).
+
         trajectory_idx = np.searchsorted(self._precompute_cumlengths - 1, idx, side="left")
 
         # Compute index of pick along time-dimension of trajectory.
@@ -229,22 +232,32 @@ class TrajectoriesDataset(torch.utils.data.Dataset):
         return trajectory
 
 
-def get_data_loader_by_samples(path, input_length_sequence, batch_size, shuffle=True):
+def get_data_loader_by_samples(path, input_length_sequence, dist_manager, dp_rank, shuffle=True):
     """Returns a data loader for the dataset.
 
     Args:
         path (str): Path to dataset.
         input_length_sequence (int): Length of input sequence.
-        batch_size (int): Batch size.
         shuffle (bool, optional): Whether to shuffle the dataset. Defaults to True.
 
     Returns:
         torch.utils.data.DataLoader: Data loader for the dataset.
     """
     dataset = SamplesDataset(path, input_length_sequence)
-    return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
-                                       pin_memory=True, collate_fn=collate_fn)
-
+    if dist_manager.distributed and \
+        dist_manager.group_size("data_parallel") > 1:
+      sampler = DistributedSampler(dataset,
+        num_replicas=dist_manager.group_size("data_parallel"),
+        rank=dp_rank, shuffle=shuffle)
+    else:
+      sampler = None
+    dl = torch.utils.data.DataLoader(dataset=dataset,
+        batch_size=1,
+        pin_memory=True,
+        sampler=sampler,
+        collate_fn=collate_fn,
+        )
+    return dl
 
 def get_data_loader_by_trajectories(path):
     """Returns a data loader for the dataset.
