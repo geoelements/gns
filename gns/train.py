@@ -682,7 +682,6 @@ def main(_):
   if DistributedManager().distributed:
     graph_partition_pg_name = "model_parallel"
     world_size = torch.distributed.get_world_size()
-    # debug: change graph partition size so there is ddp
     graph_partition_size = 3
     if not world_size % graph_partition_size == 0:
       raise ValueError(

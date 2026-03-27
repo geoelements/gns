@@ -13,6 +13,31 @@
 Graph Network-based Simulator (GNS) is a generalizable, efficient, and accurate machine learning (ML)-based surrogate simulator for particulate and fluid systems using Graph Neural Networks (GNNs). GNS code is a viable surrogate for numerical methods such as Material Point Method, Smooth Particle Hydrodynamics and Computational Fluid dynamics. GNS exploits distributed data parallelism to achieve fast multi-GPU training. The GNS code can handle complex boundary conditions and multi-material interactions.
 
 
+* **HPC Scalability:** Designed to scale efficiently across multi-node, multi-GPU high-performance computing clusters (like those at TACC), enabling the simulation of extremely large-scale physical systems that were previously bottlenecked by single-device memory.
+
+### Processor: Distributed Message Passing and CuGraphCSC
+
+In our Encode-Process-Decode architecture, the Encoder and Decoder operate completely locally on each device. The **Processor** (e.g., `GraphCastProcessor`) is the only component that requires network communication, as it handles the core spatial physics interactions where edges may cross GPU partition boundaries.
+
+
+#### Distributed Message Passing
+Because the physical domain is spatially partitioned, a node residing on GPU $A$ might share an edge with a neighboring node on GPU $B$. During the GNN's forward pass, the Processor must resolve these cross-partition edges.
+
+* **Feature Synchronization:** Before executing the local message-passing step, the Processor uses the `model_parallel` process group to communicate required node features across the network. GPUs exchange only the specific latent features needed to satisfy the cross-partition edges.
+* **Seamless Aggregation:** Once the necessary remote features are fetched and concatenated with the local features, the Processor computes the graph convolutions exactly as it would on a single device. This ensures mathematical equivalence to a non-distributed run while scaling the memory capacity horizontally across the cluster.
+
+By combining minimal cross-device communication (Distributed Message Passing) with maximum on-device computation speed (`CuGraphCSC`), the Processor efficiently scales complex simulations across multiple nodes.
+
+
+#### Hardware-Aware Topology Setup (Lonestar6 A100)
+We utilize a distributed manager to configure a 2D process group grid that maps directly to the underlying cluster hardware. On the Lonestar6 (LS6) A100 queue, each node is equipped with 3 GPUs. Therefore, the default setup enforces a `model_parallel` size of 3.
+
+This hierarchical topology strategically separates the communicators to optimize bandwidth:
+
+* **Intra-node Model Parallelism (`model_parallel`):** The graph partition group is set to 3 to keep all distributed message passing entirely within a single node. This ensures that the heavy, frequent feature synchronizations required by the Processor utilize the node's high-speed internal interconnects.
+
+* **Inter-node Data Parallelism (`data_parallel`):** Standard gradient synchronization across different graph batch instances operates node-wide, routing the less-frequent DDP communication across the wider cluster network fabric.
+
 ## Run GNS
 
 > Training GNS on simulation data
@@ -20,7 +45,7 @@ Graph Network-based Simulator (GNS) is a generalizable, efficient, and accurate 
 On each node, run
 
 ```shell
-python -m torch.distributed.launch --nnodes=[NNODES]  --nproc_per_node=[GPU_PER_NODE] --node_rank=[LOCAL_RANK] --master_addr=[MAIN_RANK ]gns/train_kan.py [ARGS] 
+python -m torch.distributed.launch --nnodes=[NNODES]  --nproc_per_node=[GPU_PER_NODE] --node_rank=[LOCAL_RANK] --master_addr=[MAIN_RANK] gns/train.py [ARGS] 
 ```
 
 > Resume training
@@ -35,7 +60,7 @@ python -m torch.distributed.launch  --data_path="<input-training-data-path>" --m
 
 > Rollout prediction
 ```shell
-torchrun --standalone --nproc_per_node 1 gns/train_kan.py  
+torchrun --standalone --nproc_per_node 1 gns/train.py  
 --mode="rollout" ---data_path="<input-data-path>" --model_path="<path-to-load-save-model-file>" --output_path="<path-to-save-output>" --model_file="model.pt" --train_state_file="train_state.pt" [ARGS] 
 ```
 
