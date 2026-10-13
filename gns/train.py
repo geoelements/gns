@@ -140,7 +140,7 @@ def predict(device: str, cfg: DictConfig):
     # Use `valid`` set for eval mode if not use `test`
     split = (
         "test"
-        if (cfg.mode == "rollout" or (not os.path.isfile("{cfg.data.path}valid.npz")))
+        if (cfg.mode == "rollout" or (not os.path.isfile(f"{cfg.data.path}valid.npz")))
         else "valid"
     )
 
