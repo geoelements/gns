@@ -144,7 +144,7 @@ def predict(device: str):
     os.makedirs(FLAGS.output_path)
 
   # Use `valid`` set for eval mode if not use `test`
-  split = 'test' if (FLAGS.mode == 'rollout' or (not os.path.isfile("{FLAGS.data_path}valid.npz"))) else 'valid'
+  split = 'test' if (FLAGS.mode == 'rollout' or (not os.path.isfile(f"{FLAGS.data_path}valid.npz"))) else 'valid'
 
   # Get dataset
   ds = data_loader.get_data_loader_by_trajectories(path=f"{FLAGS.data_path}{split}.npz")
